@@ -1,0 +1,1091 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jevi 팀 장부</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#C2255C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Jevi 장부">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@500&family=Nanum+Gothic:wght@400;700;800&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+/* Layout: one working column with sticky tabs; month groups for ledgers; the quote is a fixed A4 paper sheet that stays white in both themes. */
+:root {
+  --bg: #F6F6F8; --surface: #FFFFFF; --sunk: #EEEEF2; --line: #E1E0E7;
+  --fg: #1B1A22; --muted: #6D6B7A;
+  --accent: #C2255C; --accent-soft: #FBE4EC;
+  --ok: #1F7A4D; --ok-soft: #DDF2E6; --warn: #9A5B00; --warn-soft: #FCEFD6;
+  --int: #3B5BDB; --int-soft: #E3E9FD;
+  --font-display: "Do Hyeon", "IBM Plex Sans KR", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --font-doc: "Nanum Gothic", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131218; --surface: #1C1B23; --sunk: #24232D; --line: #33313E;
+    --fg: #ECEBF2; --muted: #9C99AB; --accent: #F06595; --accent-soft: #3A1A28;
+    --ok: #63C994; --ok-soft: #173326; --warn: #F0B45A; --warn-soft: #3A2A12;
+    --int: #8EA6FF; --int-soft: #1E2645; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131218; --surface: #1C1B23; --sunk: #24232D; --line: #33313E;
+  --fg: #ECEBF2; --muted: #9C99AB; --accent: #F06595; --accent-soft: #3A1A28;
+  --ok: #63C994; --ok-soft: #173326; --warn: #F0B45A; --warn-soft: #3A2A12;
+  --int: #8EA6FF; --int-soft: #1E2645; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 20px; }
+.wrap > * { min-width: 0; }
+h1, h2, h3 { margin: 0; text-wrap: balance; font-weight: 600; }
+h1 { font-family: var(--font-display); font-weight: 400; font-size: 34px; line-height: 1.1; }
+h2 { font-size: 18px; }
+h3 { font-size: 15px; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.eyebrow { font-size: 12px; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+
+header.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.who { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.role { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.role.member { background: var(--sunk); color: var(--muted); }
+
+nav.tabs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); padding-top: 6px; }
+nav.tabs button { flex: none; border: 0; background: none; color: var(--muted); font: inherit; font-weight: 500; padding: 8px 12px 10px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+nav.tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+
+button { font: inherit; cursor: pointer; }
+.btn { border: 1px solid var(--line); background: var(--surface); color: var(--fg); padding: 7px 14px; border-radius: 8px; font-weight: 500; white-space: nowrap; }
+.btn:hover { background: var(--sunk); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.08); background: var(--accent); }
+.btn.danger { color: var(--accent); white-space: normal; }
+.btn.ghost { border-color: transparent; background: none; }
+.btn.small { padding: 4px 10px; font-size: 13px; }
+.btn:disabled { opacity: .5; cursor: default; }
+.linkbtn { border: 0; background: none; color: var(--accent); padding: 0; font-size: 13px; text-decoration: underline; text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.row-gap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg { display: inline-flex; background: var(--sunk); border-radius: 8px; padding: 3px; }
+.seg button { border: 0; background: none; color: var(--muted); padding: 5px 12px; border-radius: 6px; font-weight: 500; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.stat { background: var(--surface); padding: 14px 16px; display: grid; gap: 2px; min-width: 0; }
+.stat b { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 500; overflow-wrap: anywhere; }
+.stat span { font-size: 12px; color: var(--muted); }
+@media (max-width: 560px) { .stats { grid-template-columns: 1fr; } }
+
+.group { border-top: 1px solid var(--line); }
+.group > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 12px 4px; cursor: pointer; flex-wrap: wrap; }
+.group > summary::-webkit-details-marker { display: none; }
+.group > summary::before { content: "▸"; color: var(--muted); width: 12px; transition: transform .15s; display: inline-block; }
+.group[open] > summary::before { transform: rotate(90deg); }
+.group > summary .count { color: var(--muted); font-size: 13px; }
+.group > summary .sum { margin-left: auto; font-size: 13px; color: var(--muted); }
+.tablebox { overflow-x: auto; padding-bottom: 8px; }
+table.data { width: 100%; border-collapse: collapse; min-width: 600px; }
+table.data th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.data td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+table.data .r { text-align: right; }
+table.data tbody tr.row { cursor: pointer; }
+table.data tbody tr.row:hover { background: var(--sunk); }
+table.data tfoot td { border-bottom: 0; font-size: 13px; color: var(--muted); }
+table.data tfoot td b { color: var(--fg); font-weight: 500; }
+.title-cell { font-weight: 500; }
+
+.chip { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 5px; white-space: nowrap; font-weight: 500; }
+.chip.ext { background: var(--accent-soft); color: var(--accent); }
+.chip.int { background: var(--int-soft); color: var(--int); }
+.chip.none { background: var(--sunk); color: var(--muted); }
+.toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer; justify-self: start; }
+.toggle input { width: 18px; height: 18px; margin: 0; padding: 0; accent-color: var(--accent); }
+.pay { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; border: 0; white-space: nowrap; }
+.pay.done { background: var(--ok-soft); color: var(--ok); }
+.pay.due { background: var(--warn-soft); color: var(--warn); }
+.pay.na { background: none; color: var(--muted); padding-inline: 0; font-weight: 400; }
+.check { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 8px; padding: 5px 10px; font-size: 13px; font-weight: 500; white-space: nowrap; }
+.check .box { width: 16px; height: 16px; border-radius: 4px; border: 2px solid var(--muted); display: inline-grid; place-items: center; font-size: 11px; line-height: 1; }
+.check[aria-checked="true"] { border-color: var(--ok); color: var(--ok); background: var(--ok-soft); }
+.check[aria-checked="true"] .box { background: var(--ok); border-color: var(--ok); color: #fff; }
+
+.empty { border: 1px dashed var(--line); border-radius: 12px; padding: 28px 20px; text-align: center; color: var(--muted); display: grid; gap: 10px; justify-items: center; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 14px; min-width: 0; }
+.notice { font-size: 13px; color: var(--muted); background: var(--sunk); border-radius: 8px; padding: 10px 12px; margin: 0; }
+.field { display: grid; gap: 5px; min-width: 0; }
+.field label, .lbl { font-size: 13px; color: var(--muted); font-weight: 500; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 640px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+input, select, textarea { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; width: 100%; }
+textarea { resize: vertical; min-height: 42px; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.kinds button { border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 8px; padding: 6px 12px; font-weight: 500; }
+.kinds button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.calc { display: flex; justify-content: space-between; align-items: baseline; background: var(--sunk); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+.actions { display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; align-items: center; }
+.actions .right { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.err { color: var(--accent); font-size: 13px; }
+.okmsg { color: var(--ok); font-size: 13px; }
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 9px 16px; border-radius: 999px; font-size: 14px; z-index: 30; max-width: calc(100% - 32px); text-align: center; }
+.overlay { position: fixed; inset: 0; background: rgba(15, 14, 20, .45); display: grid; place-items: center; z-index: 20; padding: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.sheet { background: var(--surface); color: var(--fg); border-radius: 14px; width: min(480px, 100%); max-height: 100%; overflow: auto; padding: 22px; display: grid; gap: 14px; box-shadow: 0 20px 50px rgba(0,0,0,.25); }
+.linkbox { font-family: var(--font-num); font-size: 12px; word-break: break-all; background: var(--sunk); border-radius: 8px; padding: 10px; user-select: all; }
+.sub { color: var(--muted); font-size: 12px; }
+
+/* quote editor */
+.qrows { display: grid; gap: 10px; }
+.qrow { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 10px; grid-template-columns: 28px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, .8fr); align-items: start; background: var(--surface); }
+.qrow .no { font-family: var(--font-num); color: var(--muted); padding-top: 30px; text-align: center; }
+.qrow .bank { grid-column: 2 / span 2; }
+.qrow .acct { grid-column: 4 / span 2; }
+.qrow .del { grid-column: 1; grid-row: 2; align-self: end; padding: 9px 0; color: var(--muted); border: 0; background: none; font-size: 13px; }
+@media (max-width: 720px) {
+  .qrow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .qrow .no { grid-column: 1 / -1; padding-top: 0; text-align: left; }
+  .qrow .event { grid-column: 1 / -1; }
+  .qrow .bank, .qrow .acct { grid-column: auto; }
+  .qrow .del { grid-column: 1 / -1; grid-row: auto; text-align: right; }
+}
+.preview-box { overflow-x: auto; background: var(--sunk); border-radius: 12px; padding: 16px; }
+
+/* the quote paper: always white paper with black ink, in both themes */
+.q-paper { width: 794px; min-height: 1123px; margin: 0 auto; background: #fff; color: #111; font-family: var(--font-doc); padding: 56px 44px; box-shadow: 0 2px 12px rgba(0,0,0,.12); font-size: 13px; line-height: 1.4; }
+.q-title { text-align: center; font-size: 26px; font-weight: 800; margin: 40px 0 28px; }
+.q-title span { display: inline-block; padding: 0 28px 4px; border-bottom: 4px double #111; letter-spacing: .5em; text-indent: .5em; }
+.q-head { display: grid; grid-template-columns: 1fr 1.15fr; gap: 18px; align-items: end; margin-bottom: 18px; }
+.q-head.solo { grid-template-columns: minmax(0, 360px); }
+.q-left { display: grid; gap: 10px; font-weight: 700; }
+.q-line { display: flex; gap: 10px; border-bottom: 1px solid #111; padding-bottom: 3px; }
+.q-line .k { white-space: nowrap; }
+.q-line .v { flex: 1; text-align: center; }
+.q-say { margin-top: 18px; }
+table.q-sup { border-collapse: collapse; width: 100%; font-size: 12px; }
+table.q-sup th, table.q-sup td { border: 1px solid #111; padding: 4px 6px; height: 24px; }
+table.q-sup th { font-weight: 700; white-space: nowrap; text-align: center; width: 76px; }
+table.q-sup th.cap { letter-spacing: 1.2em; text-indent: 1.2em; }
+table.q-items { border-collapse: collapse; width: 100%; border: 2px solid #111; }
+table.q-items th, table.q-items td { border: 1px solid #111; padding: 6px; text-align: center; }
+table.q-items thead th { background: #d9d9d9; font-weight: 700; height: 34px; border-bottom: 2px solid #111; }
+table.q-items td { height: 46px; font-size: 12px; color: #333; }
+table.q-items td.amt { text-align: right; padding-right: 10px; font-size: 13px; }
+table.q-items td.big { font-size: 13px; }
+table.q-items tfoot td { font-weight: 800; color: #111; background: #f2f2f2; height: 38px; border-top: 2px solid #111; font-size: 13px; }
+.q-note { margin-top: 14px; font-size: 12px; color: #333; white-space: pre-wrap; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">JEVI DANCE TEAM · 일정 &amp; 공금</div>
+      <h1>Jevi 팀 장부</h1>
+    </div>
+    <div class="who" id="who"></div>
+  </header>
+  <nav class="tabs" id="tabs" role="tablist" hidden></nav>
+  <main id="main">
+    <div class="empty"><strong>장부를 여는 중이에요</strong><span>내 일정과 수입, 공금 내역이 여기에 표시됩니다.</span></div>
+  </main>
+</div>
+<div id="layer"></div>
+
+<script>
+/* Firebase 라이브러리를 못 불러오면(인터넷 끊김 등) 안내를 보여 줍니다 */
+setTimeout(function () {
+  if (window.__ledgerStarted) return;
+  document.getElementById("main").innerHTML = '<div class="empty"><strong>장부를 열 수 없어요</strong><span>Firebase를 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.</span></div>';
+}, 10000);
+</script>
+<script type="module">
+/* =====================================================================
+   1) 아래 FIREBASE_CONFIG 를 내 Firebase 프로젝트 값으로 바꿔 주세요.
+      (Firebase 콘솔 → 프로젝트 설정 → 내 앱 → SDK 설정 및 구성)
+   2) LEADER_EMAILS 는 firestore.rules 의 관리자 이메일과 똑같아야 합니다.
+   ===================================================================== */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCeZSCInpQyx-qFn82zL34kMFHwlcuMLG4",
+  authDomain: "jevi-19bc0.firebaseapp.com",
+  projectId: "jevi-19bc0",
+  appId: "1:985757928564:web:1afc4038f8e9087afb1521",
+};
+const LEADER_EMAILS = ["a49145846@gmail.com"];
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+window.__ledgerStarted = true;
+
+const KINDS = [
+  { key: "외부 일정", cls: "ext", rateKey: "ext" },
+  { key: "내부 일정", cls: "int", rateKey: "int" },
+  { key: "공금 제외", cls: "none", rateKey: null },
+];
+const DEFAULT_RATES = { ext: 0.10, int: 0.25 };
+const BANKS = ["KB국민", "신한", "우리", "하나", "농협", "기업", "카카오", "토스", "케이뱅크", "SC제일", "새마을", "우체국", "수협", "신협", "부산", "대구", "경남", "광주", "전북", "제주", "씨티"];
+const SUPPLIER_FIELDS = [["regNo", "등록번호"], ["company", "상호"], ["ceo", "성명"], ["address", "사업장주소"], ["bizType", "업태"], ["bizItem", "종목"], ["email", "이메일"]];
+const LS_LINK = "jevi.link";
+// 팀원: 개인 링크로 내 장부·공금을 씀 / 댄서: 계좌만 저장 (견적서 자동 입력용, 초대 링크 없음)
+const TYPES = { team: "팀원", dancer: "댄서" };
+const XLSX_SRC = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+
+const S = {
+  fdb: null, role: null, me: null, email: "", mid: null,
+  rates: { ...DEFAULT_RATES }, supplier: {},
+  members: {}, entries: {}, payments: {}, quotes: [],
+  tab: "fund", viewMember: null, fundMonth: monthKey(new Date()), open: {},
+  quote: null, quoteDirty: false,
+};
+const subs = {};
+let auth = null;
+
+/* ---------- helpers ---------- */
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function won(n) { return Math.round(Number(n) || 0).toLocaleString("ko-KR"); }
+function digits(v) { return Number(String(v ?? "").replace(/[^\d]/g, "")) || 0; }
+function pad(n) { return String(n).padStart(2, "0"); }
+function monthKey(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1); }
+function todayStr() { const d = new Date(); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+function monthLabel(k) { const [y, m] = k.split("-"); return `${y}년 ${Number(m)}월`; }
+function dateLabel(s) { if (!s) return ""; const [y, m, d] = s.split("-"); return `${y}년 ${Number(m)}월 ${Number(d)}일`; }
+function shiftMonth(k, n) { const [y, m] = k.split("-").map(Number); return monthKey(new Date(y, m - 1 + n, 1)); }
+function kindOf(k) { return KINDS.find(x => x.key === k) || KINDS[2]; }
+function rateFor(kind) { const k = kindOf(kind); return k.rateKey ? (S.rates[k.rateKey] ?? 0) : 0; }
+function pct(r) { return (Math.round(r * 1000) / 10) + "%"; }
+function rid(n) { const a = new Uint8Array(n); crypto.getRandomValues(a); return Array.from(a, x => "abcdefghijkmnpqrstuvwxyz23456789"[x % 32]).join(""); }
+function memberDomain() { return FIREBASE_CONFIG.authDomain.toLowerCase(); }
+function loginEmailFor(mid, token) { return `m-${mid}-${token}@${memberDomain()}`; }
+function linkFor(mid, token) { return location.origin + location.pathname + "#m=" + mid + "." + token; }
+function tokenOf(m) { const e = (m && m.loginEmail) || ""; const p = e.split("@")[0].split("-"); return p.length === 3 ? p[2] : ""; }
+function memberName(id) { const m = S.members[id]; return (m && m.name) || "이름 없음"; }
+function sortedMemberIds() { return Object.keys(S.members).sort((a, b) => memberName(a).localeCompare(memberName(b), "ko")); }
+// type 이 없는 예전 댄서는 모두 개인 링크를 가진 팀원이었어요
+function typeOf(m) { return m && m.type === "dancer" ? "dancer" : "team"; }
+function isTeam(id) { return typeOf(S.members[id]) === "team"; }
+function teamIds() { return sortedMemberIds().filter(isTeam); }
+function supOn(q) { return q.showSupplier !== false; }
+function toast(msg) { const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2600); }
+function sumOf(list) { let amount = 0, fund = 0; for (const e of list) { amount += e.amount || 0; fund += e.fund || 0; } return { amount, fund }; }
+function monthsOf(mid) { const g = {}; for (const e of (S.entries[mid] || [])) (g[e.month] = g[e.month] || []).push(e); return g; }
+function isPaid(mid, month) { return !!(S.payments[mid] && S.payments[mid][month]); }
+function dueOf(mid) { let due = 0; const g = monthsOf(mid); for (const k in g) if (!isPaid(mid, k)) due += sumOf(g[k]).fund; return due; }
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+async function copyText(text) { try { await navigator.clipboard.writeText(text); toast("복사했어요"); return true; } catch (e) { return false; } }
+function fatal(msg, withLogout) {
+  document.getElementById("tabs").hidden = true;
+  document.getElementById("main").innerHTML = `<div class="empty"><strong>장부를 열 수 없어요</strong><span>${esc(msg)}</span>${withLogout ? `<button class="btn" id="fLogout">로그아웃</button>` : ""}</div>`;
+  const b = document.getElementById("fLogout"); if (b) b.onclick = () => signOut(auth);
+}
+const AUTH_ERRORS = {
+  "auth/invalid-email": "이메일 형식이 맞지 않아요.",
+  "auth/missing-password": "비밀번호를 입력해 주세요.",
+  "auth/invalid-credential": "비밀번호가 맞지 않아요.",
+  "auth/wrong-password": "비밀번호가 맞지 않아요.",
+  "auth/user-not-found": "아직 비밀번호를 만들지 않았어요. '처음 왔어요'에서 만들어 주세요.",
+  "auth/email-already-in-use": "이미 비밀번호가 만들어진 링크예요. '로그인'에서 들어와 주세요.",
+  "auth/weak-password": "비밀번호는 6자 이상이어야 해요.",
+  "auth/too-many-requests": "시도가 너무 많았어요. 잠시 후 다시 해 주세요.",
+  "auth/operation-not-allowed": "이메일/비밀번호 로그인이 꺼져 있어요. Firebase 콘솔 → Authentication → 로그인 방법에서 켜 주세요.",
+  "auth/network-request-failed": "인터넷 연결을 확인해 주세요.",
+};
+function authMsg(e) { return (e && AUTH_ERRORS[e.code]) || "잠시 후 다시 시도해 주세요."; }
+
+/* ---------- link & boot ---------- */
+function readLink() {
+  const m = location.hash.match(/^#m=([a-z0-9]+)\.([a-z0-9]+)$/);
+  if (m) { lsSet(LS_LINK, m[1] + "." + m[2]); return { mid: m[1], token: m[2] }; }
+  const saved = lsGet(LS_LINK);
+  if (saved && /^[a-z0-9]+\.[a-z0-9]+$/.test(saved)) { const [mid, token] = saved.split("."); return { mid, token }; }
+  return null;
+}
+let adminMode = location.hash === "#admin";
+function boot() {
+  if (FIREBASE_CONFIG.apiKey.startsWith("여기에")) return fatal("아직 Firebase 설정이 비어 있어요. index.html 위쪽의 FIREBASE_CONFIG 에 내 프로젝트 값을 붙여 넣어 주세요. (설정방법.md 참고)");
+  const app = initializeApp(FIREBASE_CONFIG);
+  auth = getAuth(app);
+  S.fdb = getFirestore(app);
+  onAuthStateChanged(auth, u => {
+    stopAll();
+    if (!u) { memberMode = null; return adminMode ? showAdminLogin() : showMemberLogin(); }
+    const email = (u.email || "").toLowerCase();
+    S.me = u.uid; S.email = email;
+    if (LEADER_EMAILS.map(e => e.toLowerCase()).includes(email)) {
+      S.role = "admin";
+      if (!u.emailVerified) return showVerify();
+      S.tab = "fund"; return startAdmin();
+    }
+    const m = email.match(/^m-([a-z0-9]+)-([a-z0-9]+)@/);
+    if (m) { S.role = "member"; S.mid = m[1]; return startMember(); }
+    fatal("이 계정은 장부에 등록되지 않았어요.", true);
+  });
+}
+function stopAll() {
+  Object.keys(subs).forEach(k => { try { subs[k](); } catch (e) {} delete subs[k]; });
+  Object.assign(S, { role: null, me: null, email: "", mid: null, members: {}, entries: {}, payments: {}, quotes: [], viewMember: null, open: {}, quote: null, quoteDirty: false });
+  document.getElementById("layer").innerHTML = "";
+}
+function header(roleText, name) {
+  const who = document.getElementById("who");
+  who.innerHTML = `<span class="role ${S.role === "admin" ? "" : "member"}">${esc(roleText)}</span>${name ? `<strong>${esc(name)}</strong>` : ""}
+    ${S.role === "admin" ? `<button class="btn ghost" id="xlsAll">전체 엑셀 받기</button><button class="btn ghost" id="pwchg">비밀번호 변경</button>` : ""}<button class="btn ghost" id="logout">로그아웃</button>`;
+  document.getElementById("logout").onclick = () => signOut(auth);
+  const xa = document.getElementById("xlsAll"); if (xa) xa.onclick = () => exportAllXlsx();
+  const pc = document.getElementById("pwchg");
+  if (pc) pc.onclick = async () => { try { await sendPasswordResetEmail(auth, S.email); toast("비밀번호 변경 메일을 " + S.email + " 로 보냈어요"); } catch (e) { toast(authMsg(e)); } };
+}
+
+/* ---------- member login: personal link + password ---------- */
+let memberMode = null;
+function showMemberLogin() {
+  document.getElementById("who").innerHTML = "";
+  document.getElementById("tabs").hidden = true;
+  const link = readLink();
+  const main = document.getElementById("main");
+  if (!link) {
+    main.innerHTML = `<div class="empty"><strong>개인 링크로 들어와 주세요</strong>
+      <span>관리자에게 받은 내 장부 링크를 눌러야 들어올 수 있어요.<br>링크를 잃어버렸다면 관리자에게 다시 보내 달라고 하세요.</span>
+      <button class="linkbtn" id="toAdmin">관리자 로그인</button></div>`;
+    document.getElementById("toAdmin").onclick = () => { adminMode = true; showAdminLogin(); };
+    return;
+  }
+  if (!memberMode) memberMode = lsGet("jevi.claimed." + link.mid) ? "login" : "first";
+  const first = memberMode === "first";
+  main.innerHTML = `<form class="panel" style="max-width:420px" id="mForm" novalidate>
+    <h2>내 장부 들어가기</h2>
+    <div class="seg" style="justify-self:start"><button type="button" aria-pressed="${first}" data-mm="first">처음 왔어요</button><button type="button" aria-pressed="${!first}" data-mm="login">로그인</button></div>
+    <p class="muted" style="margin:0">${first ? "내 장부에 들어갈 비밀번호를 정해 주세요. 다음부터는 이 링크와 비밀번호로만 들어올 수 있어요." : "처음에 정한 비밀번호를 입력하세요."}</p>
+    <div class="field"><label for="mPw">비밀번호${first ? " (6자 이상)" : ""}</label><input id="mPw" type="password" autocomplete="${first ? "new-password" : "current-password"}"></div>
+    ${first ? `<div class="field"><label for="mPw2">비밀번호 확인</label><input id="mPw2" type="password" autocomplete="new-password"></div>` : ""}
+    <div class="err" id="mErr"></div>
+    <div class="actions"><span class="sub">비밀번호를 잊었다면 관리자에게 '링크 재발급'을 요청하세요.</span><button type="submit" class="btn primary" id="mGo">${first ? "비밀번호 정하고 들어가기" : "들어가기"}</button></div>
+    <button type="button" class="linkbtn" id="toAdmin" style="justify-self:start">관리자 로그인</button>
+  </form>`;
+  const $ = id => document.getElementById(id);
+  document.querySelectorAll("[data-mm]").forEach(b => b.onclick = () => { memberMode = b.dataset.mm; showMemberLogin(); });
+  $("toAdmin").onclick = () => { adminMode = true; showAdminLogin(); };
+  $("mForm").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const pw = $("mPw").value;
+    if (first && pw !== $("mPw2").value) { $("mErr").textContent = "비밀번호 확인이 일치하지 않아요."; return; }
+    $("mGo").disabled = true;
+    const email = loginEmailFor(link.mid, link.token);
+    try {
+      if (first) await createUserWithEmailAndPassword(auth, email, pw);
+      else await signInWithEmailAndPassword(auth, email, pw);
+      lsSet("jevi.claimed." + link.mid, "1");
+    } catch (e) {
+      $("mGo").disabled = false;
+      if (e && e.code === "auth/email-already-in-use") { memberMode = "login"; showMemberLogin(); document.getElementById("mErr").textContent = authMsg(e); return; }
+      $("mErr").textContent = authMsg(e);
+    }
+  });
+}
+
+/* ---------- admin login ---------- */
+let adminSignup = false;
+function showAdminLogin() {
+  document.getElementById("who").innerHTML = "";
+  document.getElementById("tabs").hidden = true;
+  document.getElementById("main").innerHTML = `<form class="panel" style="max-width:420px" id="aForm" novalidate>
+    <h2>관리자 로그인</h2>
+    <div class="seg" style="justify-self:start"><button type="button" aria-pressed="${!adminSignup}" data-am="0">로그인</button><button type="button" aria-pressed="${adminSignup}" data-am="1">처음 가입</button></div>
+    <div class="field"><label for="aEmail">관리자 이메일</label><input id="aEmail" type="email" autocomplete="username"></div>
+    <div class="field"><label for="aPw">비밀번호${adminSignup ? " (6자 이상)" : ""}</label><input id="aPw" type="password" autocomplete="${adminSignup ? "new-password" : "current-password"}"></div>
+    <div class="err" id="aErr"></div><div class="okmsg" id="aOk"></div>
+    <div class="actions">${adminSignup ? "<span></span>" : `<button type="button" class="linkbtn" id="aReset">비밀번호를 잊었어요</button>`}<button type="submit" class="btn primary" id="aGo">${adminSignup ? "가입하기" : "로그인"}</button></div>
+    <button type="button" class="linkbtn" id="toMember" style="justify-self:start">팀원 화면으로</button>
+  </form>`;
+  const $ = id => document.getElementById(id);
+  document.querySelectorAll("[data-am]").forEach(b => b.onclick = () => { adminSignup = b.dataset.am === "1"; showAdminLogin(); });
+  $("toMember").onclick = () => { adminMode = false; showMemberLogin(); };
+  $("aForm").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const email = $("aEmail").value.trim(), pw = $("aPw").value;
+    if (!LEADER_EMAILS.map(e => e.toLowerCase()).includes(email.toLowerCase())) { $("aErr").textContent = "관리자로 지정된 이메일이 아니에요."; return; }
+    $("aGo").disabled = true;
+    try {
+      if (adminSignup) { const c = await createUserWithEmailAndPassword(auth, email, pw); try { await sendEmailVerification(c.user); } catch (e) {} }
+      else await signInWithEmailAndPassword(auth, email, pw);
+    } catch (e) {
+      $("aGo").disabled = false;
+      $("aErr").textContent = e && (e.code === "auth/invalid-credential" || e.code === "auth/wrong-password") ? "이메일 또는 비밀번호가 맞지 않아요."
+        : e && e.code === "auth/email-already-in-use" ? "이미 가입된 이메일이에요. 로그인 탭에서 로그인하세요." : authMsg(e);
+    }
+  });
+  if ($("aReset")) $("aReset").onclick = async () => {
+    try { await sendPasswordResetEmail(auth, $("aEmail").value.trim()); $("aErr").textContent = ""; $("aOk").textContent = "비밀번호 재설정 메일을 보냈어요. 스팸함도 확인해 주세요."; }
+    catch (e) { $("aErr").textContent = authMsg(e); }
+  };
+}
+function showVerify() {
+  header("관리자 · 인증 대기", "");
+  document.getElementById("tabs").hidden = true;
+  document.getElementById("main").innerHTML = `<div class="panel" style="max-width:480px">
+    <h2>이메일 인증이 필요해요</h2>
+    <p class="muted" style="margin:0">${esc(S.email)} 메일함에 온 인증 링크를 누른 뒤 아래 버튼을 눌러 주세요. 인증을 마쳐야 관리자 화면이 열려요. 메일이 안 보이면 스팸함도 확인해 주세요.</p>
+    <div class="actions"><button class="btn" id="vResend">인증 메일 다시 보내기</button><button class="btn primary" id="vDone">인증 완료했어요</button></div></div>`;
+  document.getElementById("vResend").onclick = async () => { try { await sendEmailVerification(auth.currentUser); toast("인증 메일을 보냈어요"); } catch (e) { toast(authMsg(e)); } };
+  document.getElementById("vDone").onclick = async () => {
+    await auth.currentUser.reload();
+    if (!auth.currentUser.emailVerified) { toast("아직 인증되지 않았어요. 메일의 링크를 먼저 눌러 주세요."); return; }
+    await auth.currentUser.getIdToken(true);
+    const u = auth.currentUser; stopAll();
+    S.me = u.uid; S.email = u.email.toLowerCase(); S.role = "admin"; S.tab = "fund"; startAdmin();
+  };
+}
+
+/* ---------- data subscriptions ---------- */
+function onErr(e) { console.warn(e); }
+function watchRates() {
+  subs.rates = onSnapshot(doc(S.fdb, "config/rates"), s => {
+    const d = s.exists() ? s.data() : null;
+    S.rates = { ext: d && typeof d.ext === "number" ? d.ext : DEFAULT_RATES.ext, int: d && typeof d.int === "number" ? d.int : DEFAULT_RATES.int };
+    render();
+  }, onErr);
+}
+function watchMemberData(mid) {
+  if (subs["e:" + mid]) return;
+  subs["e:" + mid] = onSnapshot(collection(S.fdb, "members", mid, "entries"), s => {
+    S.entries[mid] = s.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0));
+    render();
+  }, onErr);
+  subs["p:" + mid] = onSnapshot(collection(S.fdb, "members", mid, "payments"), s => {
+    const p = {}; s.docs.forEach(d => { p[d.id] = d.data(); }); S.payments[mid] = p; render();
+  }, onErr);
+}
+function startMember() {
+  const lost = () => fatal("이 링크는 더 이상 쓸 수 없어요. 관리자에게 새 링크를 받아 주세요.", true);
+  watchRates();
+  subs.me = onSnapshot(doc(S.fdb, "members", S.mid), s => {
+    if (!s.exists()) return lost();
+    S.members = { [S.mid]: s.data() }; render();
+  }, lost);
+  watchMemberData(S.mid);
+  updateDoc(doc(S.fdb, "members", S.mid), { lastSeenAt: Date.now() }).catch(() => {});
+}
+function startAdmin() {
+  watchRates();
+  subs.supplier = onSnapshot(doc(S.fdb, "config/supplier"), s => { S.supplier = s.exists() ? s.data() : {}; render(); }, onErr);
+  subs.members = onSnapshot(collection(S.fdb, "members"), s => {
+    const next = {}; s.docs.forEach(d => { next[d.id] = d.data(); }); S.members = next;
+    Object.keys(next).forEach(watchMemberData);
+    Object.keys(subs).filter(k => /^[ep]:/.test(k)).forEach(k => { const id = k.slice(2); if (!next[id]) { subs[k](); delete subs[k]; delete S.entries[id]; delete S.payments[id]; } });
+    render();
+  }, onErr);
+  subs.quotes = onSnapshot(collection(S.fdb, "quotes"), s => {
+    S.quotes = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.updatedAt || 0) - (a.updatedAt || 0));
+    render();
+  }, onErr);
+  render();
+}
+
+/* ---------- render ---------- */
+function render() {
+  if (!S.role) return;
+  const main = document.getElementById("main"), tabs = document.getElementById("tabs");
+  if (S.role === "member") {
+    if (!S.members[S.mid]) return;
+    header("팀원 · 내 장부", memberName(S.mid));
+    tabs.hidden = true;
+    return renderLedger(main, S.mid);
+  }
+  header("관리자", "");
+  const list = [["fund", "월별 공금"], ["ledgers", "멤버별 일정"], ["dancers", "댄서·계좌"], ["quotes", "견적서"], ["settings", "설정"]];
+  tabs.hidden = false;
+  tabs.innerHTML = list.map(([k, l]) => `<button role="tab" aria-selected="${S.tab === k}" data-tab="${k}">${l}</button>`).join("");
+  tabs.querySelectorAll("button").forEach(b => b.onclick = () => {
+    if (S.tab === "quotes" && S.quote && S.quoteDirty && b.dataset.tab !== "quotes") { toast("견적서를 먼저 저장하거나 '목록으로'를 눌러 주세요"); return; }
+    if (b.dataset.tab !== "quotes") S.quote = null;
+    S.tab = b.dataset.tab; if (S.tab !== "ledgers") S.viewMember = null; render();
+  });
+  // the quote editor keeps its own inputs; live data updates must not rebuild it while typing
+  if (S.tab === "quotes" && S.quote && document.getElementById("qEditor")) { refreshDancerList(); return; }
+  if (S.tab === "fund") return renderFund(main);
+  if (S.tab === "ledgers") return S.viewMember && S.members[S.viewMember] ? renderLedger(main, S.viewMember) : renderLedgerList(main);
+  if (S.tab === "dancers") return renderDancers(main);
+  if (S.tab === "quotes") return S.quote ? renderQuoteEditor(main) : renderQuoteList(main);
+  if (S.tab === "settings") return renderSettings(main);
+}
+
+/* ----- ledger: a member's own page, or the admin viewing one ----- */
+function renderLedger(main, mid) {
+  const admin = S.role === "admin";
+  const list = S.entries[mid] || [];
+  const year = String(new Date().getFullYear());
+  const yr = sumOf(list.filter(e => (e.date || "").startsWith(year)));
+  const due = dueOf(mid);
+  const groups = monthsOf(mid);
+  const keys = Object.keys(groups).sort().reverse();
+  let html = "";
+  if (admin) html += `<div class="toolbar"><button class="btn ghost" id="back">← 멤버 목록</button></div>`;
+  html += `<div class="toolbar"><h2>${esc(memberName(mid))} 님의 일정표</h2><div class="row-gap"><button class="btn" id="xlsBtn">엑셀 받기</button><button class="btn primary" id="addBtn">+ 새 일정</button></div></div>
+  <div class="stats">
+    <div class="stat"><span>${year}년 총 금액</span><b>${won(yr.amount)}원</b></div>
+    <div class="stat"><span>${year}년 공금</span><b>${won(yr.fund)}원</b></div>
+    <div class="stat"><span>아직 안 낸 공금</span><b style="color:${due > 0 ? "var(--warn)" : "var(--ok)"}">${won(due)}원</b></div>
+  </div>`;
+  if (!keys.length) {
+    html += `<div class="empty"><strong>아직 기록된 일정이 없어요</strong><span>행사·공연·레슨 같은 일정과 입금 금액을 추가하면 공금이 자동으로 계산돼요.<br>외부 일정 ${pct(S.rates.ext)} · 내부 일정 ${pct(S.rates.int)}</span><button class="btn primary" id="addBtn2">첫 일정 추가</button></div>`;
+  } else {
+    html += `<div>` + keys.map((k, i) => {
+      const g = groups[k], s = sumOf(g), paid = isPaid(mid, k);
+      const okey = mid + "|" + k, isOpen = S.open[okey] ?? (i === 0);
+      const status = s.fund <= 0 && !paid ? `<span class="pay na">공금 없음</span>`
+        : admin ? `<button class="check" role="checkbox" aria-checked="${paid}" data-paymonth="${k}"><span class="box">${paid ? "✓" : ""}</span>${paid ? "납부 완료" : "미납"}</button>`
+        : `<span class="pay ${paid ? "done" : "due"}">${paid ? "✓ 납부 완료" : "미납"}</span>`;
+      return `<details class="group" data-okey="${esc(okey)}" ${isOpen ? "open" : ""}>
+        <summary><strong>${monthLabel(k)}</strong><span class="count">${g.length}</span>${status}
+          <span class="sum num">금액 ${won(s.amount)} · 공금 ${won(s.fund)}</span></summary>
+        <div class="tablebox"><table class="data">
+          <thead><tr><th>스케줄</th><th>입금 날짜</th><th>구분</th><th class="r">금액</th><th class="r">공금</th></tr></thead>
+          <tbody>${g.map(e => `<tr class="row" data-entry="${esc(e.id)}" tabindex="0">
+            <td class="title-cell">${esc(e.title)}</td><td>${dateLabel(e.date)}</td>
+            <td><span class="chip ${kindOf(e.kind).cls}">${esc(e.kind)}</span>${e.rate ? ` <span class="sub">${pct(e.rate)}</span>` : ""}</td>
+            <td class="r num">${won(e.amount)}</td><td class="r num">${won(e.fund)}</td></tr>`).join("")}</tbody>
+          <tfoot><tr><td colspan="3">${paid && !admin ? "납부가 끝난 달은 수정할 수 없어요" : ""}</td><td class="r num">합계 <b>${won(s.amount)}</b></td><td class="r num">합계 <b>${won(s.fund)}</b></td></tr></tfoot>
+        </table></div></details>`;
+    }).join("") + `</div>`;
+  }
+  if (!admin) html += `<p class="notice">이 장부는 나와 관리자만 볼 수 있어요. 공금 납부 확인은 관리자가 표시합니다.</p>`;
+  main.innerHTML = html;
+  const back = document.getElementById("back"); if (back) back.onclick = () => { S.viewMember = null; render(); };
+  document.getElementById("xlsBtn").onclick = () => exportLedgerXlsx(mid);
+  ["addBtn", "addBtn2"].forEach(id => { const b = document.getElementById(id); if (b) b.onclick = () => openEntryForm(mid, null); });
+  main.querySelectorAll("details.group").forEach(d => d.addEventListener("toggle", () => { S.open[d.dataset.okey] = d.open; }));
+  main.querySelectorAll("[data-entry]").forEach(el => el.onclick = () => {
+    const e = list.find(x => x.id === el.dataset.entry); if (!e) return;
+    if (!admin && isPaid(mid, e.month)) { toast("납부가 끝난 달은 관리자만 수정할 수 있어요"); return; }
+    openEntryForm(mid, e);
+  });
+  main.querySelectorAll("[data-paymonth]").forEach(b => b.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); togglePaid(mid, b.dataset.paymonth); });
+}
+async function togglePaid(mid, month) {
+  const ref = doc(S.fdb, "members", mid, "payments", month);
+  try {
+    if (isPaid(mid, month)) { await deleteDoc(ref); toast(`${memberName(mid)} ${monthLabel(month)} 미납으로 되돌렸어요`); }
+    else { await setDoc(ref, { fund: sumOf(monthsOf(mid)[month] || []).fund, paidAt: Date.now() }); toast(`${memberName(mid)} ${monthLabel(month)} 납부 완료`); }
+  } catch (e) { toast("저장하지 못했어요"); }
+}
+
+function openEntryForm(mid, entry) {
+  const admin = S.role === "admin";
+  const layer = document.getElementById("layer");
+  let kind = entry ? entry.kind : "외부 일정";
+  layer.innerHTML = `<div class="overlay"><form class="sheet" id="ef" novalidate>
+    <h2>${entry ? "일정 수정" : "새 일정"}${admin ? ` <span class="muted" style="font-weight:400;font-size:14px">· ${esc(memberName(mid))}</span>` : ""}</h2>
+    <div class="field"><label for="fTitle">스케줄</label><input id="fTitle" maxlength="80" value="${esc(entry ? entry.title : "")}"></div>
+    <div class="field"><label for="fDate">입금 날짜</label><input id="fDate" type="date" value="${esc(entry ? entry.date : todayStr())}"></div>
+    <div class="field"><span class="lbl">구분</span><div class="kinds" id="fKinds">${KINDS.map(k => `<button type="button" data-k="${k.key}" aria-pressed="${k.key === kind}">${k.key}</button>`).join("")}</div></div>
+    <div class="field"><label for="fAmt">금액 (원)</label><input id="fAmt" inputmode="numeric" value="${entry ? won(entry.amount) : ""}"></div>
+    <div class="calc"><span class="muted" id="fRate"></span><strong class="num" id="fFund"></strong></div>
+    <div class="err" id="fErr"></div>
+    <div class="actions">${entry ? `<button type="button" class="btn danger" id="fDel">삭제</button>` : "<span></span>"}
+      <div class="right"><button type="button" class="btn" id="fCancel">취소</button><button type="submit" class="btn primary" id="fSave">${entry ? "저장" : "추가"}</button></div></div>
+  </form></div>`;
+  const $ = s => layer.querySelector(s);
+  const close = () => { layer.innerHTML = ""; };
+  const amount = () => digits($("#fAmt").value);
+  const rate = () => (entry && entry.kind === kind && typeof entry.rate === "number") ? entry.rate : rateFor(kind);
+  const update = () => { $("#fRate").textContent = `공금 (${kind} ${pct(rate())})`; $("#fFund").textContent = won(amount() * rate()) + "원"; };
+  $("#fAmt").addEventListener("input", () => { const n = amount(); $("#fAmt").value = n ? won(n) : ""; update(); });
+  $("#fKinds").querySelectorAll("button").forEach(b => b.onclick = () => { kind = b.dataset.k; $("#fKinds").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); update(); });
+  $("#fCancel").onclick = close;
+  update(); setTimeout(() => $("#fTitle").focus(), 0);
+  if (entry) {
+    let armed = false;
+    $("#fDel").onclick = async () => {
+      if (!armed) { armed = true; $("#fDel").textContent = "한 번 더 누르면 삭제"; return; }
+      try { await deleteDoc(doc(S.fdb, "members", mid, "entries", entry.id)); close(); toast("일정을 삭제했어요"); } catch (e) { $("#fErr").textContent = "삭제하지 못했어요."; }
+    };
+  }
+  $("#ef").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const title = $("#fTitle").value.trim(), date = $("#fDate").value, amt = amount();
+    if (!title) return ($("#fErr").textContent = "스케줄 이름을 입력해 주세요.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return ($("#fErr").textContent = "입금 날짜를 골라 주세요.");
+    if (!amt) return ($("#fErr").textContent = "금액을 입력해 주세요.");
+    const month = date.slice(0, 7);
+    if (!admin && isPaid(mid, month)) return ($("#fErr").textContent = `${monthLabel(month)}은 이미 공금 납부가 끝났어요. 관리자에게 문의해 주세요.`);
+    const r = rate();
+    const body = { title, date, month, kind, amount: amt, rate: r, fund: Math.round(amt * r), createdAt: entry ? (entry.createdAt || Date.now()) : Date.now(), updatedAt: Date.now() };
+    $("#fSave").disabled = true;
+    try {
+      const ref = entry ? doc(S.fdb, "members", mid, "entries", entry.id) : doc(collection(S.fdb, "members", mid, "entries"));
+      await setDoc(ref, body);
+      S.open[mid + "|" + month] = true; close(); toast(entry ? "저장했어요" : "일정을 추가했어요");
+    } catch (e) { $("#fSave").disabled = false; $("#fErr").textContent = "저장하지 못했어요. 이미 납부가 끝난 달이거나 권한이 없어요."; }
+  });
+}
+
+/* ----- admin: monthly fund ----- */
+function renderFund(main) {
+  const mk = S.fundMonth, ids = teamIds();
+  const rows = ids.map(id => { const list = (S.entries[id] || []).filter(e => e.month === mk); return { id, n: list.length, ...sumOf(list), paid: isPaid(id, mk) }; });
+  const tot = rows.reduce((a, r) => ({ n: a.n + r.n, amount: a.amount + r.amount, fund: a.fund + r.fund, paidFund: a.paidFund + (r.paid ? r.fund : 0) }), { n: 0, amount: 0, fund: 0, paidFund: 0 });
+  const allDue = ids.reduce((a, id) => a + dueOf(id), 0);
+  let html = `<div class="toolbar"><div class="row-gap">
+      <button class="btn ghost" id="pm" aria-label="이전 달">‹</button><h2>${monthLabel(mk)} 공금</h2><button class="btn ghost" id="nm" aria-label="다음 달">›</button></div>
+      <span class="sub">입금 날짜 기준 · 외부 ${pct(S.rates.ext)} / 내부 ${pct(S.rates.int)}</span></div>
+    <div class="stats">
+      <div class="stat"><span>이번 달 걷을 공금</span><b>${won(tot.fund)}원</b></div>
+      <div class="stat"><span>이번 달 납부 완료</span><b style="color:var(--ok)">${won(tot.paidFund)}원</b></div>
+      <div class="stat"><span>전체 기간 미납</span><b style="color:${allDue > 0 ? "var(--warn)" : "var(--ok)"}">${won(allDue)}원</b></div>
+    </div>`;
+  if (!ids.length) {
+    html += `<div class="empty"><strong>아직 등록된 팀원이 없어요</strong><span>「댄서·계좌」 탭에서 팀원으로 등록하면 개인 링크가 만들어져요.</span></div>`;
+  } else {
+    html += `<div class="tablebox"><table class="data">
+      <thead><tr><th>팀원</th><th class="r">일정</th><th class="r">금액</th><th class="r">공금</th><th>납부</th></tr></thead>
+      <tbody>${rows.map(r => {
+        const p = S.payments[r.id] && S.payments[r.id][mk];
+        const changed = p && typeof p.fund === "number" && p.fund !== r.fund;
+        return `<tr><td><button class="linkbtn" data-open="${esc(r.id)}" style="font-size:15px;color:var(--fg)">${esc(memberName(r.id))}</button></td>
+        <td class="r num">${r.n}</td><td class="r num">${won(r.amount)}</td><td class="r num">${won(r.fund)}</td>
+        <td>${r.fund > 0 || r.paid ? `<button class="check" role="checkbox" aria-checked="${r.paid}" data-pay="${esc(r.id)}"><span class="box">${r.paid ? "✓" : ""}</span>${r.paid ? "납부 완료" : "미납"}</button>${changed ? ` <span class="sub" style="color:var(--warn)">납부 후 금액이 바뀜 (납부 당시 ${won(p.fund)})</span>` : ""}` : `<span class="pay na">공금 없음</span>`}</td></tr>`;
+      }).join("")}</tbody>
+      <tfoot><tr><td>합계</td><td class="r num"><b>${tot.n}</b></td><td class="r num"><b>${won(tot.amount)}</b></td><td class="r num"><b>${won(tot.fund)}</b></td><td class="num">미납 <b>${won(tot.fund - tot.paidFund)}</b></td></tr></tfoot>
+    </table></div>
+    <p class="notice">공금을 받으면 체크하세요. 체크된 달은 팀원이 기록을 고칠 수 없어요. 이름을 누르면 그 댄서의 일정표가 열려요.</p>`;
+  }
+  main.innerHTML = html;
+  document.getElementById("pm").onclick = () => { S.fundMonth = shiftMonth(mk, -1); render(); };
+  document.getElementById("nm").onclick = () => { S.fundMonth = shiftMonth(mk, 1); render(); };
+  main.querySelectorAll("[data-pay]").forEach(b => b.onclick = () => togglePaid(b.dataset.pay, mk));
+  main.querySelectorAll("[data-open]").forEach(b => b.onclick = () => { S.tab = "ledgers"; S.viewMember = b.dataset.open; render(); });
+}
+function renderLedgerList(main) {
+  const ids = teamIds();
+  if (!ids.length) { main.innerHTML = `<div class="empty"><strong>아직 등록된 팀원이 없어요</strong><span>「댄서·계좌」 탭에서 팀원으로 등록해 주세요.</span></div>`; return; }
+  main.innerHTML = `<div class="tablebox"><table class="data">
+    <thead><tr><th>팀원</th><th class="r">전체 일정</th><th class="r">전체 금액</th><th class="r">전체 공금</th><th class="r">미납</th></tr></thead>
+    <tbody>${ids.map(id => { const s = sumOf(S.entries[id] || []), due = dueOf(id); return `<tr class="row" data-member="${esc(id)}" tabindex="0">
+      <td class="title-cell">${esc(memberName(id))}</td><td class="r num">${(S.entries[id] || []).length}</td><td class="r num">${won(s.amount)}</td><td class="r num">${won(s.fund)}</td>
+      <td class="r">${due > 0 ? `<span class="pay due">${won(due)}</span>` : `<span class="muted">0</span>`}</td></tr>`; }).join("")}</tbody></table></div>`;
+  main.querySelectorAll("[data-member]").forEach(el => el.onclick = () => { S.viewMember = el.dataset.member; render(); });
+}
+
+/* ----- admin: dancers & bank accounts ----- */
+function renderDancers(main) {
+  const ids = sortedMemberIds();
+  main.innerHTML = `<div class="toolbar"><h2>댄서·계좌</h2><button class="btn primary" id="addDancer">+ 댄서 등록</button></div>
+    ${ids.length ? `<div class="tablebox"><table class="data">
+      <thead><tr><th>이름</th><th>구분</th><th>은행</th><th>계좌번호</th><th>최근 접속</th><th></th></tr></thead>
+      <tbody>${ids.map(id => { const m = S.members[id], team = isTeam(id); return `<tr>
+        <td class="title-cell">${esc(m.name)}</td><td><span class="chip ${team ? "ext" : "none"}">${TYPES[typeOf(m)]}</span></td>
+        <td>${esc(m.bank || "")}</td><td class="num">${esc(m.account || "")}</td>
+        <td class="sub">${!team ? "" : m.lastSeenAt ? new Date(m.lastSeenAt).toLocaleDateString("ko-KR") : "아직 안 들어옴"}</td>
+        <td><div class="row-gap" style="justify-content:flex-end">${team ? `<button class="btn small" data-link="${esc(id)}">개인 링크</button>` : ""}<button class="btn small" data-edit="${esc(id)}">수정</button></div></td></tr>`; }).join("")}</tbody></table></div>`
+      : `<div class="empty"><strong>등록된 댄서가 없어요</strong><span>이름과 계좌를 등록하세요. 팀원으로 등록하면 그 사람만 쓰는 개인 링크가 만들어져요.<br>견적서에서 이름을 입력하면 계좌가 자동으로 채워져요.</span></div>`}
+    <p class="notice">개인 링크는 팀원에게만 만들어져요. 팀원에게 따로 보내 주면, 처음 들어올 때 비밀번호를 정하고 그다음부터는 그 사람만 들어갈 수 있어요. 비밀번호를 잊었다면 「개인 링크 → 링크 재발급」으로 새 링크를 보내면 돼요. 댄서는 계좌만 저장되고 장부에 들어올 수 없어요.</p>`;
+  document.getElementById("addDancer").onclick = () => openDancerForm(null);
+  main.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openDancerForm(b.dataset.edit));
+  main.querySelectorAll("[data-link]").forEach(b => b.onclick = () => openLinkSheet(b.dataset.link));
+}
+function bankDatalist() { return `<datalist id="bankList">${BANKS.map(b => `<option value="${b}">`).join("")}</datalist>`; }
+function openDancerForm(mid) {
+  const m = mid ? S.members[mid] : {};
+  let type = mid ? typeOf(m) : "team";
+  const layer = document.getElementById("layer");
+  layer.innerHTML = `<div class="overlay"><form class="sheet" id="df" novalidate>
+    <h2>${mid ? "댄서 정보 수정" : "댄서 등록"}</h2>
+    <div class="field"><span class="lbl">구분</span><div class="kinds" id="dType">${Object.entries(TYPES).map(([k, l]) => `<button type="button" data-t="${k}" aria-pressed="${k === type}">${l}</button>`).join("")}</div><span class="sub" id="dHint"></span></div>
+    <div class="field"><label for="dName">이름</label><input id="dName" maxlength="30" value="${esc(m.name || "")}"></div>
+    <div class="field"><label for="dBank">은행</label><input id="dBank" list="bankList" maxlength="20" value="${esc(m.bank || "")}">${bankDatalist()}</div>
+    <div class="field"><label for="dAcct">계좌번호</label><input id="dAcct" maxlength="40" inputmode="numeric" value="${esc(m.account || "")}"></div>
+    <div class="err" id="dErr"></div>
+    <div class="actions">${mid ? `<button type="button" class="btn danger" id="dDel">삭제</button>` : "<span></span>"}
+      <div class="right"><button type="button" class="btn" id="dCancel">취소</button><button type="submit" class="btn primary" id="dSave"></button></div></div>
+  </form></div>`;
+  const $ = s => layer.querySelector(s);
+  const close = () => { layer.innerHTML = ""; };
+  const needsLink = () => type === "team" && !(mid && m.loginEmail);
+  const paintType = () => {
+    $("#dType").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x.dataset.t === type));
+    $("#dHint").textContent = type === "team"
+      ? "팀원은 개인 링크로 내 장부에 들어와 일정과 공금을 기록해요."
+      : "댄서는 계좌만 저장돼요. 견적서 자동 입력에 쓰이고, 초대 링크는 만들어지지 않아요." + (mid && m.loginEmail ? " 저장하면 지금 쓰던 개인 링크가 바로 막혀요." : "");
+    $("#dSave").textContent = needsLink() ? (mid ? "저장하고 링크 만들기" : "등록하고 링크 만들기") : (mid ? "저장" : "등록");
+  };
+  $("#dType").querySelectorAll("button").forEach(b => b.onclick = () => { type = b.dataset.t; paintType(); });
+  paintType();
+  $("#dCancel").onclick = close;
+  setTimeout(() => $("#dName").focus(), 0);
+  if (mid) {
+    let armed = false;
+    $("#dDel").onclick = async () => {
+      if (!armed) { armed = true; $("#dDel").textContent = "삭제하면 이 댄서는 더 이상 들어올 수 없어요. 한 번 더 누르면 삭제"; return; }
+      try { await deleteDoc(doc(S.fdb, "members", mid)); close(); toast("삭제했어요"); } catch (e) { $("#dErr").textContent = "삭제하지 못했어요."; }
+    };
+  }
+  $("#df").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const name = $("#dName").value.trim(), bank = $("#dBank").value.trim(), account = $("#dAcct").value.trim();
+    if (!name) return ($("#dErr").textContent = "이름을 입력해 주세요.");
+    if (Object.keys(S.members).some(id => id !== mid && S.members[id].name === name)) return ($("#dErr").textContent = "같은 이름이 이미 있어요. 견적서 자동 입력이 헷갈리지 않게 구분되는 이름을 써 주세요.");
+    const link = needsLink();
+    try {
+      if (mid) {
+        const patch = { name, bank, account, type };
+        if (link) patch.loginEmail = loginEmailFor(mid, rid(20));
+        else if (type === "dancer" && m.loginEmail) patch.loginEmail = deleteField();
+        await updateDoc(doc(S.fdb, "members", mid), patch);
+        close(); toast("저장했어요");
+        if (link) { S.members[mid] = { ...S.members[mid], ...patch }; openLinkSheet(mid); }
+      } else {
+        const newId = rid(10), body = { name, bank, account, type, createdAt: Date.now() };
+        if (link) body.loginEmail = loginEmailFor(newId, rid(20));
+        await setDoc(doc(S.fdb, "members", newId), body);
+        S.members[newId] = body;
+        close(); toast("등록했어요");
+        if (link) openLinkSheet(newId);
+      }
+    } catch (e) { $("#dErr").textContent = "저장하지 못했어요."; }
+  });
+}
+function openLinkSheet(mid) {
+  const m = S.members[mid]; if (!m || !isTeam(mid) || !m.loginEmail) return;
+  const url = linkFor(mid, tokenOf(m));
+  const layer = document.getElementById("layer");
+  layer.innerHTML = `<div class="overlay"><div class="sheet">
+    <h2>${esc(m.name)} 님 개인 링크</h2>
+    <p class="muted" style="margin:0">이 링크는 ${esc(m.name)} 님에게만 따로 보내 주세요. 링크를 가진 사람이 처음 비밀번호를 정하게 돼요.</p>
+    <div class="linkbox" id="lText">${esc(url)}</div>
+    <div class="actions"><button class="btn danger" id="lReissue">링크 재발급 (비밀번호 초기화)</button>
+      <div class="right"><button class="btn" id="lClose">닫기</button><button class="btn primary" id="lCopy">링크 복사</button></div></div>
+    <div class="err" id="lErr"></div>
+  </div></div>`;
+  const $ = s => layer.querySelector(s);
+  $("#lClose").onclick = () => { layer.innerHTML = ""; };
+  $("#lCopy").onclick = async () => {
+    if (!(await copyText(url))) { const r = document.createRange(); r.selectNodeContents($("#lText")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast("링크를 선택했어요. 길게 눌러 복사하세요"); }
+  };
+  let armed = false;
+  $("#lReissue").onclick = async () => {
+    if (!armed) { armed = true; $("#lReissue").textContent = "이전 링크와 비밀번호가 바로 막혀요. 한 번 더 누르면 재발급"; return; }
+    const loginEmail = loginEmailFor(mid, rid(20));
+    try { await updateDoc(doc(S.fdb, "members", mid), { loginEmail }); S.members[mid] = { ...S.members[mid], loginEmail }; toast("새 링크를 만들었어요"); openLinkSheet(mid); }
+    catch (e) { $("#lErr").textContent = "재발급하지 못했어요."; }
+  };
+}
+
+/* ----- admin: quotes ----- */
+function quoteTotals(q) { let amount = 0, vat = 0; for (const r of (q.rows || [])) { amount += digits(r.amount); vat += digits(r.vat); } return { amount, vat, total: amount + vat }; }
+function blankRow() { return { event: "", name: "", amount: "", vat: "", bank: "", account: "" }; }
+function renderQuoteList(main) {
+  main.innerHTML = `<div class="toolbar"><h2>견적서</h2><button class="btn primary" id="newQuote">+ 새 견적서</button></div>
+    ${S.quotes.length ? `<div class="tablebox"><table class="data">
+      <thead><tr><th>작성일</th><th>수신</th><th>댄서</th><th class="r">공급가액</th><th class="r">합계</th></tr></thead>
+      <tbody>${S.quotes.map(q => { const t = quoteTotals(q); return `<tr class="row" data-q="${esc(q.id)}" tabindex="0">
+        <td>${dateLabel(q.date)}</td><td class="title-cell">${esc(q.recipient || "")}</td>
+        <td class="sub">${esc((q.rows || []).map(r => r.name).filter(Boolean).join(", "))}</td>
+        <td class="r num">${won(t.amount)}</td><td class="r num">${won(t.total)}</td></tr>`; }).join("")}</tbody></table></div>`
+      : `<div class="empty"><strong>아직 작성한 견적서가 없어요</strong><span>댄서 이름을 입력하면 등록된 은행과 계좌가 자동으로 채워져요.<br>작성한 견적서는 JPG와 PDF로 바로 받을 수 있어요.</span></div>`}`;
+  document.getElementById("newQuote").onclick = () => {
+    S.quote = { id: null, date: todayStr(), recipient: "", showSupplier: true, supplier: { ...S.supplier }, note: "", rows: [blankRow()] };
+    S.quoteDirty = false; renderQuoteEditor(main);
+  };
+  main.querySelectorAll("[data-q]").forEach(el => el.onclick = () => {
+    const q = S.quotes.find(x => x.id === el.dataset.q); if (!q) return;
+    S.quote = JSON.parse(JSON.stringify({ supplier: {}, note: "", ...q }));
+    if (!S.quote.rows || !S.quote.rows.length) S.quote.rows = [blankRow()];
+    S.quoteDirty = false; renderQuoteEditor(main);
+  });
+}
+function refreshDancerList() {
+  const dl = document.getElementById("dancerList");
+  if (dl) dl.innerHTML = sortedMemberIds().map(id => `<option value="${esc(memberName(id))}">`).join("");
+}
+function renderQuoteEditor(main) {
+  const q = S.quote;
+  main.innerHTML = `<div id="qEditor" style="display:grid;gap:20px">
+    <div class="toolbar"><button class="btn ghost" id="qBack">← 목록으로</button>
+      <div class="row-gap">${q.id ? `<button class="btn danger" id="qDel">삭제</button><button class="btn" id="qCopy">복제</button>` : ""}
+        <button class="btn" id="qSave">저장</button><button class="btn" id="qXls">엑셀 받기</button><button class="btn" id="qJpg">JPG 받기</button><button class="btn primary" id="qPdf">PDF 받기</button></div></div>
+    <div class="panel">
+      <div class="grid2">
+        <div class="field"><label for="qDate">작성일</label><input id="qDate" type="date" value="${esc(q.date)}"></div>
+        <div class="field"><label for="qTo">수신 (귀하)</label><input id="qTo" maxlength="60" value="${esc(q.recipient)}"></div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="qSupOn" ${supOn(q) ? "checked" : ""}>견적서에 공급자 정보 넣기</label>
+      <details id="qSupBox" ${supOn(q) ? "" : "hidden"}><summary class="lbl" style="cursor:pointer">공급자 정보 ${q.supplier.company ? `(${esc(q.supplier.company)})` : "(설정 탭에 기본값을 저장해 두면 자동으로 채워져요)"}</summary>
+        <div class="grid3" style="margin-top:12px">${SUPPLIER_FIELDS.map(([k, l]) => `<div class="field"><label for="qs_${k}">${l}</label><input id="qs_${k}" data-sup="${k}" value="${esc(q.supplier[k] || "")}"></div>`).join("")}</div>
+      </details>
+    </div>
+    <div class="toolbar"><h3>견적 내역</h3><div class="row-gap"><button class="btn small" id="vat10">부가세 10% 계산</button><button class="btn small" id="vat0">부가세 비우기</button></div></div>
+    <datalist id="dancerList"></datalist>${bankDatalist()}
+    <div class="qrows" id="qRows"></div>
+    <div><button class="btn" id="qAddRow">+ 행 추가</button></div>
+    <div class="field"><label for="qNote">비고 (선택)</label><textarea id="qNote" rows="2" placeholder="견적서 아래에 들어갈 메모">${esc(q.note || "")}</textarea></div>
+    <div class="err" id="qErr"></div>
+    <h3>미리보기 <span class="sub">(이 모습 그대로 JPG·PDF로 저장돼요)</span></h3>
+    <div class="preview-box"><div id="qPaper" class="q-paper"></div></div>
+  </div>`;
+  const $ = id => document.getElementById(id);
+  const dirty = () => { S.quoteDirty = true; paintPaper(); };
+  refreshDancerList();
+  redrawRows();
+  $("qDate").oninput = e => { q.date = e.target.value; dirty(); };
+  $("qTo").oninput = e => { q.recipient = e.target.value; dirty(); };
+  $("qNote").oninput = e => { q.note = e.target.value; dirty(); };
+  main.querySelectorAll("[data-sup]").forEach(inp => inp.oninput = () => { q.supplier[inp.dataset.sup] = inp.value; dirty(); });
+  $("qSupOn").onchange = e => { q.showSupplier = e.target.checked; $("qSupBox").hidden = !q.showSupplier; dirty(); };
+  $("qAddRow").onclick = () => { q.rows.push(blankRow()); S.quoteDirty = true; redrawRows(); const evs = main.querySelectorAll('[data-f="event"]'); evs[evs.length - 1].focus(); };
+  $("vat10").onclick = () => { q.rows.forEach(r => { r.vat = digits(r.amount) ? won(Math.round(digits(r.amount) * 0.1)) : ""; }); S.quoteDirty = true; redrawRows(); };
+  $("vat0").onclick = () => { q.rows.forEach(r => { r.vat = ""; }); S.quoteDirty = true; redrawRows(); };
+  $("qBack").onclick = () => {
+    if (S.quoteDirty && !$("qBack").dataset.armed) { $("qBack").dataset.armed = "1"; $("qBack").textContent = "저장 안 한 내용이 있어요. 한 번 더 누르면 나가기"; return; }
+    S.quote = null; S.quoteDirty = false; render();
+  };
+  $("qSave").onclick = () => saveQuote();
+  $("qXls").onclick = () => exportQuoteXlsx();
+  $("qJpg").onclick = () => exportQuote("jpg");
+  $("qPdf").onclick = () => exportQuote("pdf");
+  if ($("qCopy")) $("qCopy").onclick = () => { S.quote = { ...JSON.parse(JSON.stringify(q)), id: null, createdAt: null, date: todayStr() }; S.quoteDirty = true; renderQuoteEditor(main); toast("복제했어요. 저장하면 새 견적서가 돼요"); };
+  if ($("qDel")) {
+    let armed = false;
+    $("qDel").onclick = async () => {
+      if (!armed) { armed = true; $("qDel").textContent = "한 번 더 누르면 삭제"; return; }
+      try { await deleteDoc(doc(S.fdb, "quotes", q.id)); S.quote = null; S.quoteDirty = false; toast("삭제했어요"); render(); } catch (e) { $("qErr").textContent = "삭제하지 못했어요."; }
+    };
+  }
+}
+function qRowHTML(r, i) {
+  return `<div class="qrow" data-i="${i}">
+    <div class="no">${i + 1}</div>
+    <div class="field event"><label>행사명</label><textarea data-f="event" rows="2">${esc(r.event)}</textarea></div>
+    <div class="field"><label>이름</label><input data-f="name" list="dancerList" placeholder="댄서 이름" value="${esc(r.name)}"></div>
+    <div class="field"><label>공급가액</label><input data-f="amount" inputmode="numeric" value="${esc(r.amount)}"></div>
+    <div class="field"><label>부가세</label><input data-f="vat" inputmode="numeric" placeholder="없으면 비움" value="${esc(r.vat)}"></div>
+    <div class="field bank"><label>은행</label><input data-f="bank" list="bankList" value="${esc(r.bank)}"></div>
+    <div class="field acct"><label>계좌번호</label><input data-f="account" value="${esc(r.account)}"></div>
+    <button type="button" class="del" data-del="${i}" aria-label="${i + 1}번 행 삭제">✕ 삭제</button>
+  </div>`;
+}
+function redrawRows() { document.getElementById("qRows").innerHTML = S.quote.rows.map((r, i) => qRowHTML(r, i)).join(""); bindRows(); paintPaper(); }
+function bindRows() {
+  const q = S.quote, box = document.getElementById("qRows");
+  box.querySelectorAll("[data-f]").forEach(inp => {
+    const i = Number(inp.closest(".qrow").dataset.i), f = inp.dataset.f;
+    inp.oninput = () => {
+      if (f === "amount" || f === "vat") { const n = digits(inp.value); inp.value = n ? won(n) : ""; }
+      q.rows[i][f] = inp.value;
+      if (f === "name") {
+        // a registered dancer's name fills in their bank and account
+        const id = Object.keys(S.members).find(k => S.members[k].name === inp.value.trim());
+        if (id) {
+          const row = inp.closest(".qrow");
+          q.rows[i].bank = S.members[id].bank || ""; q.rows[i].account = S.members[id].account || "";
+          row.querySelector('[data-f="bank"]').value = q.rows[i].bank; row.querySelector('[data-f="account"]').value = q.rows[i].account;
+        }
+      }
+      S.quoteDirty = true; paintPaper();
+    };
+  });
+  box.querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
+    q.rows.splice(Number(b.dataset.del), 1); if (!q.rows.length) q.rows.push(blankRow()); S.quoteDirty = true; redrawRows();
+  });
+}
+function paintPaper() {
+  const q = S.quote, el = document.getElementById("qPaper"); if (!q || !el) return;
+  const t = quoteTotals(q), sp = q.supplier || {};
+  const rows = q.rows.filter(r => r.event || r.name || digits(r.amount));
+  const filler = Math.max(0, 8 - rows.length);
+  el.innerHTML = `
+    <div class="q-title"><span>견적서</span></div>
+    <div class="q-head ${supOn(q) ? "" : "solo"}">
+      <div class="q-left">
+        <div class="q-line"><span class="k">작 성 일 :</span><span class="v">${esc(dateLabel(q.date))}</span></div>
+        <div class="q-line"><span class="v">${esc(q.recipient)}</span><span>귀하</span></div>
+        <div class="q-say">아래와 같이 견적합니다.</div>
+      </div>
+      ${supOn(q) ? `<table class="q-sup">
+        <tr><th colspan="4" class="cap">공급자</th></tr>
+        <tr><th>등록번호</th><td colspan="3">${esc(sp.regNo)}</td></tr>
+        <tr><th>상호</th><td>${esc(sp.company)}</td><th style="width:52px">성명</th><td>${esc(sp.ceo)}</td></tr>
+        <tr><th>사업장주소</th><td colspan="3">${esc(sp.address)}</td></tr>
+        <tr><th>업태</th><td>${esc(sp.bizType)}</td><th style="width:52px">종목</th><td>${esc(sp.bizItem)}</td></tr>
+        <tr><th>이메일</th><td colspan="3">${esc(sp.email)}</td></tr>
+      </table>` : ""}
+    </div>
+    <table class="q-items">
+      <colgroup><col style="width:40px"><col><col style="width:70px"><col style="width:96px"><col style="width:72px"><col style="width:70px"><col style="width:142px"></colgroup>
+      <thead><tr><th>번호</th><th>행사명</th><th>이름</th><th>공급가액</th><th>부가세</th><th>은행</th><th>계좌번호</th></tr></thead>
+      <tbody>${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.event).replace(/\n/g, "<br>")}</td><td class="big">${esc(r.name)}</td>
+        <td class="amt">${digits(r.amount) ? won(digits(r.amount)) : ""}</td><td class="amt">${digits(r.vat) ? won(digits(r.vat)) : ""}</td>
+        <td class="big">${esc(r.bank)}</td><td class="big">${esc(r.account)}</td></tr>`).join("")}
+        ${"<tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>".repeat(filler)}</tbody>
+      <tfoot><tr><td colspan="3">합 계</td><td class="amt">${won(t.amount)}</td><td class="amt">${t.vat ? won(t.vat) : ""}</td><td colspan="2">총액 ${won(t.total)}원</td></tr></tfoot>
+    </table>
+    ${q.note ? `<div class="q-note">${esc(q.note)}</div>` : ""}`;
+}
+async function saveQuote() {
+  const q = S.quote, err = document.getElementById("qErr");
+  if (!q.recipient.trim()) { err.textContent = "수신(귀하)을 입력해 주세요."; return false; }
+  const now = Date.now();
+  const body = { date: q.date, recipient: q.recipient.trim(), showSupplier: supOn(q), supplier: q.supplier, note: q.note || "", rows: q.rows.filter(r => r.event || r.name || digits(r.amount)), createdAt: q.createdAt || now, updatedAt: now };
+  try {
+    const ref = q.id ? doc(S.fdb, "quotes", q.id) : doc(collection(S.fdb, "quotes"));
+    await setDoc(ref, body);
+    q.id = ref.id; q.createdAt = body.createdAt; S.quoteDirty = false; err.textContent = "";
+    const back = document.getElementById("qBack"); if (back) { delete back.dataset.armed; back.textContent = "← 목록으로"; }
+    toast("견적서를 저장했어요"); return true;
+  } catch (e) { err.textContent = "저장하지 못했어요."; return false; }
+}
+async function exportQuote(kind) {
+  if (!window.html2canvas || !window.jspdf) { toast("다운로드 도구를 불러오지 못했어요. 인터넷 연결을 확인해 주세요"); return; }
+  if (S.quoteDirty || !S.quote.id) { if (!(await saveQuote())) return; }
+  const q = S.quote, el = document.getElementById("qPaper");
+  // ASCII-only file name: some phones and browsers drop non-ASCII download names
+  const name = `Jevi_quote_${q.date}_${q.id.slice(0, 4)}`;
+  try {
+    await document.fonts.ready;
+    const shadow = el.style.boxShadow; el.style.boxShadow = "none";
+    const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff" });
+    el.style.boxShadow = shadow;
+    if (kind === "jpg") {
+      const blob = await new Promise(res => canvas.toBlob(res, "image/jpeg", 0.95));
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = name + ".jpg";
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } else {
+      const pdf = new window.jspdf.jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+      const w = 210, h = canvas.height * w / canvas.width;
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, w, Math.min(h, 297));
+      pdf.save(name + ".pdf");
+    }
+    toast(kind === "jpg" ? "JPG를 저장했어요" : "PDF를 저장했어요");
+  } catch (e) { console.error(e); toast("파일을 만들지 못했어요"); }
+}
+
+/* ----- excel (.xlsx) download: the library loads only when a button is pressed ----- */
+let xlsxLoading = null;
+function loadXlsx() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  return xlsxLoading = xlsxLoading || new Promise((res, rej) => {
+    const s = document.createElement("script"); s.src = XLSX_SRC;
+    s.onload = () => res(window.XLSX);
+    s.onerror = () => { xlsxLoading = null; s.remove(); rej(new Error("xlsx")); };
+    document.head.appendChild(s);
+  });
+}
+// sheets: [[sheet name, rows (first row = header), column widths], ...]
+async function downloadXlsx(name, sheets) {
+  let X;
+  try { X = await loadXlsx(); } catch (e) { toast("엑셀 도구를 불러오지 못했어요. 인터넷 연결을 확인해 주세요"); return; }
+  try {
+    const wb = X.utils.book_new();
+    for (const [title, rows, widths] of sheets) {
+      const ws = X.utils.aoa_to_sheet(rows);
+      ws["!cols"] = widths.map(w => ({ wch: w }));
+      X.utils.book_append_sheet(wb, ws, title);
+    }
+    // ASCII-only file name, same reason as the quote files
+    X.writeFile(wb, name + ".xlsx");
+    toast("엑셀 파일을 저장했어요");
+  } catch (e) { console.error(e); toast("엑셀 파일을 만들지 못했어요"); }
+}
+function payStatus(mid, month, fund) { return isPaid(mid, month) ? "납부 완료" : fund > 0 ? "미납" : "공금 없음"; }
+function entrySheet(ids) {
+  const rows = [];
+  for (const id of ids) for (const e of (S.entries[id] || []))
+    rows.push([memberName(id), e.date, e.title, e.kind, e.amount, e.rate ? Math.round(e.rate * 1000) / 10 : 0, e.fund, payStatus(id, e.month, e.fund)]);
+  rows.sort((a, b) => a[1].localeCompare(b[1]) || a[0].localeCompare(b[0], "ko"));
+  return ["일정", [["이름", "입금 날짜", "스케줄", "구분", "금액", "공금 비율(%)", "공금", "납부"], ...rows], [12, 12, 28, 10, 12, 12, 12, 10]];
+}
+function monthSheet(ids) {
+  const rows = [];
+  for (const id of ids) { const g = monthsOf(id); for (const k in g) {
+    const s = sumOf(g[k]), p = S.payments[id] && S.payments[id][k];
+    rows.push([k, memberName(id), g[k].length, s.amount, s.fund, payStatus(id, k, s.fund), p && p.paidAt ? new Date(p.paidAt).toLocaleDateString("ko-KR") : ""]);
+  } }
+  rows.sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1], "ko"));
+  return ["월별 공금", [["월", "이름", "일정 수", "금액", "공금", "납부", "납부 체크일"], ...rows], [10, 12, 8, 14, 12, 10, 14]];
+}
+function exportLedgerXlsx(mid) {
+  const name = S.role === "admin" ? `Jevi_ledger_${mid.slice(0, 4)}_${todayStr()}` : `Jevi_my_ledger_${todayStr()}`;
+  downloadXlsx(name, [entrySheet([mid]), monthSheet([mid])]);
+}
+function exportAllXlsx() {
+  const team = teamIds();
+  const dancers = sortedMemberIds().map(id => { const m = S.members[id], t = isTeam(id);
+    return [m.name || "", TYPES[typeOf(m)], m.bank || "", m.account || "", t && m.lastSeenAt ? new Date(m.lastSeenAt).toLocaleDateString("ko-KR") : ""]; });
+  const quotes = [];
+  for (const q of [...S.quotes].reverse()) (q.rows || []).forEach((r, i) => {
+    const a = digits(r.amount), v = digits(r.vat);
+    quotes.push([q.date || "", q.recipient || "", i + 1, r.event || "", r.name || "", a, v || "", a + v, r.bank || "", r.account || ""]);
+  });
+  downloadXlsx(`Jevi_ledger_${todayStr()}`, [
+    ["댄서·계좌", [["이름", "구분", "은행", "계좌번호", "최근 접속"], ...dancers], [12, 8, 12, 22, 14]],
+    entrySheet(team), monthSheet(team),
+    ["견적서", [["작성일", "수신", "번호", "행사명", "이름", "공급가액", "부가세", "합계", "은행", "계좌번호"], ...quotes], [12, 24, 6, 28, 10, 12, 10, 12, 12, 22]],
+  ]);
+}
+function exportQuoteXlsx() {
+  const q = S.quote, t = quoteTotals(q), sp = q.supplier || {};
+  const rows = [["견적서"], [], ["작성일", dateLabel(q.date)], ["수신", (q.recipient || "") + " 귀하"]];
+  if (supOn(q)) { rows.push([], ["공급자"]); SUPPLIER_FIELDS.forEach(([k, l]) => rows.push([l, sp[k] || ""])); }
+  rows.push([], ["번호", "행사명", "이름", "공급가액", "부가세", "은행", "계좌번호"]);
+  q.rows.filter(r => r.event || r.name || digits(r.amount)).forEach((r, i) =>
+    rows.push([i + 1, r.event || "", r.name || "", digits(r.amount), digits(r.vat) || "", r.bank || "", r.account || ""]));
+  rows.push(["합계", "", "", t.amount, t.vat || "", "총액", t.total]);
+  if (q.note) rows.push([], ["비고", q.note]);
+  downloadXlsx(`Jevi_quote_${q.date}_${(q.id || "new").slice(0, 4)}`, [["견적서", rows, [10, 28, 12, 14, 12, 12, 22]]]);
+}
+
+/* ----- admin: settings ----- */
+function renderSettings(main) {
+  main.innerHTML = `<div class="grid2" style="align-items:start">
+    <div class="panel">
+      <h2>공금 비율</h2>
+      <p class="muted" style="margin:0">새로 입력하거나 구분을 바꾼 일정부터 적용돼요. 이미 저장된 일정은 입력 당시 비율을 유지합니다.</p>
+      <div class="field"><label for="rExt">외부 일정 (%)</label><input id="rExt" type="number" min="0" max="100" step="0.5" value="${S.rates.ext * 100}"></div>
+      <div class="field"><label for="rInt">내부 일정 (%)</label><input id="rInt" type="number" min="0" max="100" step="0.5" value="${S.rates.int * 100}"></div>
+      <div class="err" id="rErr"></div>
+      <div class="actions"><span></span><button class="btn primary" id="rSave">비율 저장</button></div>
+    </div>
+    <div class="panel">
+      <h2>견적서 공급자 기본값</h2>
+      <p class="muted" style="margin:0">새 견적서를 만들 때 자동으로 채워져요.</p>
+      ${SUPPLIER_FIELDS.map(([k, l]) => `<div class="field"><label for="s_${k}">${l}</label><input id="s_${k}" value="${esc(S.supplier[k] || "")}"></div>`).join("")}
+      <div class="err" id="sErr"></div>
+      <div class="actions"><span></span><button class="btn primary" id="sSave">공급자 정보 저장</button></div>
+    </div></div>`;
+  document.getElementById("rSave").onclick = async () => {
+    const ext = Number(document.getElementById("rExt").value), int = Number(document.getElementById("rInt").value);
+    if (!(ext >= 0 && ext <= 100 && int >= 0 && int <= 100)) { document.getElementById("rErr").textContent = "0에서 100 사이 숫자를 입력해 주세요."; return; }
+    try { await setDoc(doc(S.fdb, "config/rates"), { ext: ext / 100, int: int / 100 }); toast("공금 비율을 저장했어요"); } catch (e) { document.getElementById("rErr").textContent = "저장하지 못했어요."; }
+  };
+  document.getElementById("sSave").onclick = async () => {
+    const body = {}; SUPPLIER_FIELDS.forEach(([k]) => { body[k] = document.getElementById("s_" + k).value.trim(); });
+    try { await setDoc(doc(S.fdb, "config/supplier"), body); toast("공급자 정보를 저장했어요"); } catch (e) { document.getElementById("sErr").textContent = "저장하지 못했어요."; }
+  };
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") document.getElementById("layer").innerHTML = "";
+  if (e.key === "Enter" && e.target.matches && e.target.matches("tr.row")) e.target.click();
+});
+window.addEventListener("hashchange", () => { if (/^#m=/.test(location.hash) && !S.role) { memberMode = null; adminMode = false; showMemberLogin(); } });
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+try { boot(); } catch (e) { console.error(e); fatal("불러오는 중 문제가 생겼어요. 새로고침해 주세요."); }
+</script>
+</body>
+</html>
