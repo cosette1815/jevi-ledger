@@ -112,6 +112,8 @@ table.data tfoot td b { color: var(--fg); font-weight: 500; }
 .chip.ext { background: var(--accent-soft); color: var(--accent); }
 .chip.int { background: var(--int-soft); color: var(--int); }
 .chip.none { background: var(--sunk); color: var(--muted); }
+.chip.in { background: var(--ok-soft); color: var(--ok); }
+.chip.out { background: var(--accent-soft); color: var(--accent); }
 .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer; justify-self: start; }
 .toggle input { width: 18px; height: 18px; margin: 0; padding: 0; accent-color: var(--accent); }
 .pay { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; border: 0; white-space: nowrap; }
@@ -248,8 +250,8 @@ const XLSX_SRC = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.m
 const S = {
   fdb: null, role: null, me: null, email: "", mid: null,
   rates: { ...DEFAULT_RATES }, supplier: {},
-  members: {}, entries: {}, payments: {}, quotes: [],
-  tab: "fund", viewMember: null, fundMonth: monthKey(new Date()), open: {},
+  members: {}, entries: {}, payments: {}, quotes: [], cash: [],
+  tab: "cash", viewMember: null, fundMonth: monthKey(new Date()), open: {},
   quote: null, quoteDirty: false,
 };
 const subs = {};
@@ -329,7 +331,7 @@ function boot() {
     if (LEADER_EMAILS.map(e => e.toLowerCase()).includes(email)) {
       S.role = "admin";
       if (!u.emailVerified) return showVerify();
-      S.tab = "fund"; return startAdmin();
+      S.tab = "cash"; return startAdmin();
     }
     const m = email.match(/^m-([a-z0-9]+)-([a-z0-9]+)@/);
     if (m) { S.role = "member"; S.mid = m[1]; return startMember(); }
@@ -338,17 +340,23 @@ function boot() {
 }
 function stopAll() {
   Object.keys(subs).forEach(k => { try { subs[k](); } catch (e) {} delete subs[k]; });
-  Object.assign(S, { role: null, me: null, email: "", mid: null, members: {}, entries: {}, payments: {}, quotes: [], viewMember: null, open: {}, quote: null, quoteDirty: false });
+  Object.assign(S, { role: null, me: null, email: "", mid: null, members: {}, entries: {}, payments: {}, quotes: [], cash: [], viewMember: null, open: {}, quote: null, quoteDirty: false });
   document.getElementById("layer").innerHTML = "";
 }
-function header(roleText, name) {
+function header(roleText, name, withSettings) {
   const who = document.getElementById("who");
   who.innerHTML = `<span class="role ${S.role === "admin" ? "" : "member"}">${esc(roleText)}</span>${name ? `<strong>${esc(name)}</strong>` : ""}
-    ${S.role === "admin" ? `<button class="btn ghost" id="xlsAll">전체 엑셀 받기</button><button class="btn ghost" id="pwchg">비밀번호 변경</button>` : ""}<button class="btn ghost" id="logout">로그아웃</button>`;
+    ${withSettings ? `<button class="btn ghost" id="goSettings" ${S.tab === "settings" ? 'aria-current="page" style="color:var(--accent)"' : ""}>설정</button>` : ""}<button class="btn ghost" id="logout">로그아웃</button>`;
   document.getElementById("logout").onclick = () => signOut(auth);
-  const xa = document.getElementById("xlsAll"); if (xa) xa.onclick = () => exportAllXlsx();
-  const pc = document.getElementById("pwchg");
-  if (pc) pc.onclick = async () => { try { await sendPasswordResetEmail(auth, S.email); toast("비밀번호 변경 메일을 " + S.email + " 로 보냈어요"); } catch (e) { toast(authMsg(e)); } };
+  const gs = document.getElementById("goSettings"); if (gs) gs.onclick = () => goTab("settings");
+}
+async function changePassword() {
+  try { await sendPasswordResetEmail(auth, S.email); toast("비밀번호 변경 메일을 " + S.email + " 로 보냈어요"); } catch (e) { toast(authMsg(e)); }
+}
+function goTab(k) {
+  if (S.tab === "quotes" && S.quote && S.quoteDirty && k !== "quotes") { toast("견적서를 먼저 저장하거나 '목록으로'를 눌러 주세요"); return; }
+  if (k !== "quotes") S.quote = null;
+  S.tab = k; S.viewMember = null; render();
 }
 
 /* ---------- member login: personal link + password ---------- */
@@ -447,7 +455,7 @@ function showVerify() {
     if (!auth.currentUser.emailVerified) { toast("아직 인증되지 않았어요. 메일의 링크를 먼저 눌러 주세요."); return; }
     await auth.currentUser.getIdToken(true);
     const u = auth.currentUser; stopAll();
-    S.me = u.uid; S.email = u.email.toLowerCase(); S.role = "admin"; S.tab = "fund"; startAdmin();
+    S.me = u.uid; S.email = u.email.toLowerCase(); S.role = "admin"; S.tab = "cash"; startAdmin();
   };
 }
 
@@ -494,6 +502,10 @@ function startAdmin() {
     S.quotes = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.updatedAt || 0) - (a.updatedAt || 0));
     render();
   }, onErr);
+  subs.cash = onSnapshot(collection(S.fdb, "cashbook"), s => {
+    S.cash = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0));
+    render();
+  }, onErr);
   render();
 }
 
@@ -507,19 +519,15 @@ function render() {
     tabs.hidden = true;
     return renderLedger(main, S.mid);
   }
-  header("관리자", "");
-  const list = [["fund", "월별 공금"], ["ledgers", "멤버별 일정"], ["dancers", "댄서·계좌"], ["quotes", "견적서"], ["settings", "설정"]];
+  header("관리자", "", true);
+  const list = [["cash", "자금 현황"], ["fund", "월별 공금"], ["dancers", "댄서 정보"], ["quotes", "견적서"]];
   tabs.hidden = false;
   tabs.innerHTML = list.map(([k, l]) => `<button role="tab" aria-selected="${S.tab === k}" data-tab="${k}">${l}</button>`).join("");
-  tabs.querySelectorAll("button").forEach(b => b.onclick = () => {
-    if (S.tab === "quotes" && S.quote && S.quoteDirty && b.dataset.tab !== "quotes") { toast("견적서를 먼저 저장하거나 '목록으로'를 눌러 주세요"); return; }
-    if (b.dataset.tab !== "quotes") S.quote = null;
-    S.tab = b.dataset.tab; if (S.tab !== "ledgers") S.viewMember = null; render();
-  });
+  tabs.querySelectorAll("button").forEach(b => b.onclick = () => goTab(b.dataset.tab));
   // the quote editor keeps its own inputs; live data updates must not rebuild it while typing
   if (S.tab === "quotes" && S.quote && document.getElementById("qEditor")) { refreshDancerList(); return; }
-  if (S.tab === "fund") return renderFund(main);
-  if (S.tab === "ledgers") return S.viewMember && S.members[S.viewMember] ? renderLedger(main, S.viewMember) : renderLedgerList(main);
+  if (S.tab === "fund") return S.viewMember && S.members[S.viewMember] ? renderLedger(main, S.viewMember) : renderFund(main);
+  if (S.tab === "cash") return renderCash(main);
   if (S.tab === "dancers") return renderDancers(main);
   if (S.tab === "quotes") return S.quote ? renderQuoteEditor(main) : renderQuoteList(main);
   if (S.tab === "settings") return renderSettings(main);
@@ -535,7 +543,7 @@ function renderLedger(main, mid) {
   const groups = monthsOf(mid);
   const keys = Object.keys(groups).sort().reverse();
   let html = "";
-  if (admin) html += `<div class="toolbar"><button class="btn ghost" id="back">← 멤버 목록</button></div>`;
+  if (admin) html += `<div class="toolbar"><button class="btn ghost" id="back">← 월별 공금</button></div>`;
   html += `<div class="toolbar"><h2>${esc(memberName(mid))} 님의 일정표</h2><div class="row-gap"><button class="btn" id="xlsBtn">엑셀 받기</button><button class="btn primary" id="addBtn">+ 새 일정</button></div></div>
   <div class="stats">
     <div class="stat"><span>${year}년 총 금액</span><b>${won(yr.amount)}원</b></div>
@@ -650,7 +658,7 @@ function renderFund(main) {
       <div class="stat"><span>전체 기간 미납</span><b style="color:${allDue > 0 ? "var(--warn)" : "var(--ok)"}">${won(allDue)}원</b></div>
     </div>`;
   if (!ids.length) {
-    html += `<div class="empty"><strong>아직 등록된 팀원이 없어요</strong><span>「댄서·계좌」 탭에서 팀원으로 등록하면 개인 링크가 만들어져요.</span></div>`;
+    html += `<div class="empty"><strong>아직 등록된 팀원이 없어요</strong><span>「댄서 정보」 탭에서 팀원으로 등록하면 개인 링크가 만들어져요.</span></div>`;
   } else {
     html += `<div class="tablebox"><table class="data">
       <thead><tr><th>팀원</th><th class="r">일정</th><th class="r">금액</th><th class="r">공금</th><th>납부</th></tr></thead>
@@ -663,29 +671,102 @@ function renderFund(main) {
       }).join("")}</tbody>
       <tfoot><tr><td>합계</td><td class="r num"><b>${tot.n}</b></td><td class="r num"><b>${won(tot.amount)}</b></td><td class="r num"><b>${won(tot.fund)}</b></td><td class="num">미납 <b>${won(tot.fund - tot.paidFund)}</b></td></tr></tfoot>
     </table></div>
-    <p class="notice">공금을 받으면 체크하세요. 체크된 달은 팀원이 기록을 고칠 수 없어요. 이름을 누르면 그 댄서의 일정표가 열려요.</p>`;
+    <p class="notice">공금을 받으면 체크하세요. 체크된 달은 팀원이 기록을 고칠 수 없어요. 이름을 누르면 그 팀원의 일정표가 열려요.</p>`;
   }
   main.innerHTML = html;
   document.getElementById("pm").onclick = () => { S.fundMonth = shiftMonth(mk, -1); render(); };
   document.getElementById("nm").onclick = () => { S.fundMonth = shiftMonth(mk, 1); render(); };
   main.querySelectorAll("[data-pay]").forEach(b => b.onclick = () => togglePaid(b.dataset.pay, mk));
-  main.querySelectorAll("[data-open]").forEach(b => b.onclick = () => { S.tab = "ledgers"; S.viewMember = b.dataset.open; render(); });
+  main.querySelectorAll("[data-open]").forEach(b => b.onclick = () => { S.viewMember = b.dataset.open; render(); });
 }
-function renderLedgerList(main) {
-  const ids = teamIds();
-  if (!ids.length) { main.innerHTML = `<div class="empty"><strong>아직 등록된 팀원이 없어요</strong><span>「댄서·계좌」 탭에서 팀원으로 등록해 주세요.</span></div>`; return; }
-  main.innerHTML = `<div class="tablebox"><table class="data">
-    <thead><tr><th>팀원</th><th class="r">전체 일정</th><th class="r">전체 금액</th><th class="r">전체 공금</th><th class="r">미납</th></tr></thead>
-    <tbody>${ids.map(id => { const s = sumOf(S.entries[id] || []), due = dueOf(id); return `<tr class="row" data-member="${esc(id)}" tabindex="0">
-      <td class="title-cell">${esc(memberName(id))}</td><td class="r num">${(S.entries[id] || []).length}</td><td class="r num">${won(s.amount)}</td><td class="r num">${won(s.fund)}</td>
-      <td class="r">${due > 0 ? `<span class="pay due">${won(due)}</span>` : `<span class="muted">0</span>`}</td></tr>`; }).join("")}</tbody></table></div>`;
-  main.querySelectorAll("[data-member]").forEach(el => el.onclick = () => { S.viewMember = el.dataset.member; render(); });
+/* ----- admin: cash status (simple income / expense book) ----- */
+function renderCash(main) {
+  const list = S.cash;
+  let inc = 0, out = 0;
+  for (const c of list) { if (c.type === "in") inc += c.amount || 0; else out += c.amount || 0; }
+  const bal = inc - out;
+  const g = {}; for (const c of list) (g[c.month] = g[c.month] || []).push(c);
+  const keys = Object.keys(g).sort().reverse();
+  let html = `<div class="toolbar"><h2>자금 현황</h2><div class="row-gap"><button class="btn" id="cashXls">엑셀 받기</button><button class="btn primary" id="cashAdd">+ 내역 추가</button></div></div>
+    <div class="stats">
+      <div class="stat"><span>현재 남은 돈</span><b style="color:${bal < 0 ? "var(--accent)" : "var(--ok)"}">${bal < 0 ? "-" : ""}${won(Math.abs(bal))}원</b></div>
+      <div class="stat"><span>총 매출(수입)</span><b>${won(inc)}원</b></div>
+      <div class="stat"><span>총 비용(지출)</span><b>${won(out)}원</b></div>
+    </div>`;
+  if (!keys.length) {
+    html += `<div class="empty"><strong>아직 기록이 없어요</strong><span>매출(수입)과 비용(지출)을 하나씩 적으면 지금 남은 돈이 자동으로 계산돼요.<br>처음에는 현재 통장 잔액을 '이월 잔액'이라는 수입으로 한 번 넣어 두면 편해요.</span><button class="btn primary" id="cashAdd2">첫 내역 추가</button></div>`;
+  } else {
+    html += `<div>` + keys.map((k, i) => {
+      const rows = g[k]; let mi = 0, mo = 0; rows.forEach(c => { if (c.type === "in") mi += c.amount || 0; else mo += c.amount || 0; });
+      const okey = "cash|" + k, isOpen = S.open[okey] ?? (i === 0);
+      return `<details class="group" data-okey="${esc(okey)}" ${isOpen ? "open" : ""}>
+        <summary><strong>${monthLabel(k)}</strong><span class="count">${rows.length}</span>
+          <span class="sum num">수입 ${won(mi)} · 지출 ${won(mo)} · 순 ${mi - mo < 0 ? "-" : ""}${won(Math.abs(mi - mo))}</span></summary>
+        <div class="tablebox"><table class="data">
+          <thead><tr><th>날짜</th><th>구분</th><th>내용</th><th class="r">금액</th></tr></thead>
+          <tbody>${rows.map(c => `<tr class="row" data-cash="${esc(c.id)}" tabindex="0">
+            <td>${dateLabel(c.date)}</td><td><span class="chip ${c.type === "in" ? "in" : "out"}">${c.type === "in" ? "수입" : "지출"}</span></td>
+            <td class="title-cell">${esc(c.title)}</td><td class="r num" style="color:${c.type === "in" ? "var(--ok)" : "var(--fg)"}">${c.type === "in" ? "+" : "-"}${won(c.amount)}</td></tr>`).join("")}</tbody>
+        </table></div></details>`;
+    }).join("") + `</div>`;
+  }
+  html += `<p class="notice">공금 납부 체크와는 별개로 직접 적는 장부예요. 팀원에게 받은 공금도 입금되면 '수입'으로 적어 두세요.</p>`;
+  main.innerHTML = html;
+  ["cashAdd", "cashAdd2"].forEach(id => { const b = document.getElementById(id); if (b) b.onclick = () => openCashForm(null); });
+  document.getElementById("cashXls").onclick = () => exportCashXlsx();
+  main.querySelectorAll("details.group").forEach(d => d.addEventListener("toggle", () => { S.open[d.dataset.okey] = d.open; }));
+  main.querySelectorAll("[data-cash]").forEach(el => el.onclick = () => { const c = list.find(x => x.id === el.dataset.cash); if (c) openCashForm(c); });
+}
+function openCashForm(item) {
+  const layer = document.getElementById("layer");
+  let type = item ? item.type : "in";
+  layer.innerHTML = `<div class="overlay"><form class="sheet" id="cf" novalidate>
+    <h2>${item ? "내역 수정" : "내역 추가"}</h2>
+    <div class="field"><span class="lbl">구분</span><div class="kinds" id="cType"><button type="button" data-t="in" aria-pressed="${type === "in"}">수입 (매출)</button><button type="button" data-t="out" aria-pressed="${type === "out"}">지출 (비용)</button></div></div>
+    <div class="field"><label for="cTitle">내용</label><input id="cTitle" maxlength="80" placeholder="예) 공금 입금, 연습실 대관료" value="${esc(item ? item.title : "")}"></div>
+    <div class="field"><label for="cDate">날짜</label><input id="cDate" type="date" value="${esc(item ? item.date : todayStr())}"></div>
+    <div class="field"><label for="cAmt">금액 (원)</label><input id="cAmt" inputmode="numeric" value="${item ? won(item.amount) : ""}"></div>
+    <div class="err" id="cErr"></div>
+    <div class="actions">${item ? `<button type="button" class="btn danger" id="cDel">삭제</button>` : "<span></span>"}
+      <div class="right"><button type="button" class="btn" id="cCancel">취소</button><button type="submit" class="btn primary" id="cSave">${item ? "저장" : "추가"}</button></div></div>
+  </form></div>`;
+  const $ = s => layer.querySelector(s);
+  const close = () => { layer.innerHTML = ""; };
+  $("#cAmt").addEventListener("input", () => { const n = digits($("#cAmt").value); $("#cAmt").value = n ? won(n) : ""; });
+  $("#cType").querySelectorAll("button").forEach(b => b.onclick = () => { type = b.dataset.t; $("#cType").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); });
+  $("#cCancel").onclick = close;
+  setTimeout(() => $("#cTitle").focus(), 0);
+  if (item) {
+    let armed = false;
+    $("#cDel").onclick = async () => {
+      if (!armed) { armed = true; $("#cDel").textContent = "한 번 더 누르면 삭제"; return; }
+      try { await deleteDoc(doc(S.fdb, "cashbook", item.id)); close(); toast("삭제했어요"); } catch (e) { $("#cErr").textContent = "삭제하지 못했어요."; }
+    };
+  }
+  $("#cf").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const title = $("#cTitle").value.trim(), date = $("#cDate").value, amt = digits($("#cAmt").value);
+    if (!title) return ($("#cErr").textContent = "내용을 입력해 주세요.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return ($("#cErr").textContent = "날짜를 골라 주세요.");
+    if (!amt) return ($("#cErr").textContent = "금액을 입력해 주세요.");
+    const now = Date.now(), month = date.slice(0, 7);
+    const body = { title, date, month, type, amount: amt, createdAt: item ? (item.createdAt || now) : now, updatedAt: now };
+    $("#cSave").disabled = true;
+    try {
+      await setDoc(item ? doc(S.fdb, "cashbook", item.id) : doc(collection(S.fdb, "cashbook")), body);
+      S.open["cash|" + month] = true; close(); toast(item ? "저장했어요" : "추가했어요");
+    } catch (e) { $("#cSave").disabled = false; $("#cErr").textContent = "저장하지 못했어요."; }
+  });
+}
+function exportCashXlsx() {
+  const rows = [...S.cash].reverse().map(c => [c.date, c.type === "in" ? "수입" : "지출", c.title, c.type === "in" ? c.amount : "", c.type === "out" ? c.amount : ""]);
+  downloadXlsx(`Jevi_cash_${todayStr()}`, [["자금 현황", [["날짜", "구분", "내용", "수입", "지출"], ...rows], [12, 8, 30, 14, 14]]]);
 }
 
 /* ----- admin: dancers & bank accounts ----- */
 function renderDancers(main) {
   const ids = sortedMemberIds();
-  main.innerHTML = `<div class="toolbar"><h2>댄서·계좌</h2><button class="btn primary" id="addDancer">+ 댄서 등록</button></div>
+  main.innerHTML = `<div class="toolbar"><h2>댄서 정보</h2><button class="btn primary" id="addDancer">+ 댄서 등록</button></div>
     ${ids.length ? `<div class="tablebox"><table class="data">
       <thead><tr><th>이름</th><th>구분</th><th>은행</th><th>계좌번호</th><th>최근 접속</th><th></th></tr></thead>
       <tbody>${ids.map(id => { const m = S.members[id], team = isTeam(id); return `<tr>
@@ -1033,8 +1114,9 @@ function exportAllXlsx() {
     quotes.push([q.date || "", q.recipient || "", i + 1, r.event || "", r.name || "", a, v || "", a + v, r.bank || "", r.account || ""]);
   });
   downloadXlsx(`Jevi_ledger_${todayStr()}`, [
-    ["댄서·계좌", [["이름", "구분", "은행", "계좌번호", "최근 접속"], ...dancers], [12, 8, 12, 22, 14]],
+    ["댄서 정보", [["이름", "구분", "은행", "계좌번호", "최근 접속"], ...dancers], [12, 8, 12, 22, 14]],
     entrySheet(team), monthSheet(team),
+    ["자금 현황", [["날짜", "구분", "내용", "수입", "지출"], ...[...S.cash].reverse().map(c => [c.date, c.type === "in" ? "수입" : "지출", c.title, c.type === "in" ? c.amount : "", c.type === "out" ? c.amount : ""])], [12, 8, 30, 14, 14]],
     ["견적서", [["작성일", "수신", "번호", "행사명", "이름", "공급가액", "부가세", "합계", "은행", "계좌번호"], ...quotes], [12, 24, 6, 28, 10, 12, 10, 12, 12, 22]],
   ]);
 }
@@ -1067,7 +1149,15 @@ function renderSettings(main) {
       ${SUPPLIER_FIELDS.map(([k, l]) => `<div class="field"><label for="s_${k}">${l}</label><input id="s_${k}" value="${esc(S.supplier[k] || "")}"></div>`).join("")}
       <div class="err" id="sErr"></div>
       <div class="actions"><span></span><button class="btn primary" id="sSave">공급자 정보 저장</button></div>
+    </div>
+    <div class="panel">
+      <h2>계정·백업</h2>
+      <p class="muted" style="margin:0">로그인한 관리자 이메일: ${esc(S.email)}</p>
+      <div class="row-gap"><button class="btn" id="setXls">전체 엑셀 받기</button><button class="btn" id="setPw">비밀번호 변경</button></div>
+      <p class="sub" style="margin:0">전체 엑셀에는 자금 현황, 댄서 정보, 일정, 월별 공금, 견적서가 들어 있어요. 비밀번호 변경은 위 이메일로 재설정 메일을 보내요.</p>
     </div></div>`;
+  document.getElementById("setXls").onclick = () => exportAllXlsx();
+  document.getElementById("setPw").onclick = () => changePassword();
   document.getElementById("rSave").onclick = async () => {
     const ext = Number(document.getElementById("rExt").value), int = Number(document.getElementById("rInt").value);
     if (!(ext >= 0 && ext <= 100 && int >= 0 && int <= 100)) { document.getElementById("rErr").textContent = "0에서 100 사이 숫자를 입력해 주세요."; return; }
